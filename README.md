@@ -2,14 +2,14 @@
 
 **Take an AI-built website and make it look human-designed.**
 
-Point Morpheus at a folder or GitHub repo, pick a design style (or describe one in a few words), and it rebuilds the site's design without the tell-tale "AI look" in seconds. Then refine it live with real-time visual editing tools.
+Point Morpheus at a folder or GitHub repo, pick a design style (or describe one in a few words), and it redesigns the site without the tell-tale "AI look" in seconds. It works like a UI/UX consultant: it audits the experience, then restructures navigation, page layouts and flows as well as colors and type, and explains each change. Then refine it live with real-time visual editing tools.
 
 ## Flow
 
 1. **Connect**: paste a repo URL, connect GitHub, or upload a folder.
 2. **Scan**: Morpheus detects the framework, pages, components and content, and scores how "AI-looking" the design is.
 3. **Choose a style**: pick a preset or write a short brief ("quiet editorial, warm paper tones, serif headlines").
-4. **Rebuild**: design tokens, typography, layout and components are regenerated. Content and functionality are preserved.
+4. **Redesign**: the consultant engine audits the UX, restructures navigation and page layouts, simplifies flows, and applies the visual style. Content and functionality are preserved. You choose the depth: Polish, Restructure or Redesign.
 5. **Refine live**: edit colors, type, spacing and layout in a real-time preview.
 6. **Ship**: Morpheus opens a pull request against the repo.
 
@@ -33,6 +33,7 @@ See [docs/AI_TELLS.md](docs/AI_TELLS.md). Examples: purple-to-blue gradients, ce
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system design and MVP roadmap
+- [docs/DESIGN_CONSULTANT.md](docs/DESIGN_CONSULTANT.md): the audit and restructuring process
 - [docs/AI_TELLS.md](docs/AI_TELLS.md): the detector's checklist
 - [styles/](styles/): style presets (design tokens plus layout rules)
 
