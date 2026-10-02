@@ -1,0 +1,9 @@
+{
+  "name": "Brutalist",
+  "description": "Raw, high-contrast, heavy borders, mono type.",
+  "colors": { "bg": "#ffffff", "fg": "#000000", "muted": "#444444", "accent": "#ff3b00", "line": "#000000" },
+  "type": { "display": "Space Grotesk, Arial, sans-serif", "body": "IBM Plex Mono, monospace", "scale": 1.5, "base": 16 },
+  "shape": { "radius": 0, "shadow": "6px 6px 0 #000", "border": "2px solid #000" },
+  "layout": { "align": "left", "density": "tight", "sections": "grid-blocks" },
+  "motion": "none"
+}

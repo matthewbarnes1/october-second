@@ -1,0 +1,9 @@
+{
+  "name": "Editorial",
+  "description": "Quiet, typographic, warm paper tones. Print-inspired.",
+  "colors": { "bg": "#f6f1e7", "fg": "#1d1b17", "muted": "#6b655a", "accent": "#9a3b1f", "line": "#d9d1bf" },
+  "type": { "display": "Fraunces, Georgia, serif", "body": "Source Serif 4, Georgia, serif", "scale": 1.333, "base": 18 },
+  "shape": { "radius": 0, "shadow": "none", "border": "1px solid var(--line)" },
+  "layout": { "align": "left", "density": "airy", "sections": "asymmetric-columns" },
+  "motion": "minimal"
+}
