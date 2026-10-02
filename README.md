@@ -13,6 +13,10 @@ Point Morpheus at a folder or GitHub repo, pick a design style (or describe one 
 5. **Refine live**: edit colors, type, spacing and layout in a real-time preview.
 6. **Ship**: Morpheus opens a pull request against the repo.
 
+## Where it runs
+
+A **web app** is the main product. A **CLI** and a **desktop app** use the same engine, for scripting, CI, and fully local work on private code.
+
 ## Any stack, in or out
 
 Morpheus reads the site into a framework-neutral model, redesigns it there, and writes it back out. That gives two modes:

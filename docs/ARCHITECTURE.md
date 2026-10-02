@@ -18,6 +18,18 @@ Morpheus never edits "React" or "Vue" directly. Every input is first lifted into
 - **Behavior**: event handlers, data fetching and state, carried as opaque blocks and never rewritten by the style engine
 - **Design layer**: tokens (color, type, spacing, radius, shadow, motion) and layout rules (section patterns, grid, density)
 
+## Surfaces: one engine, three front-ends
+
+The Site IR, adapters, analyzer and style engine live in a single core library (`@morpheus/core`). Every surface is a thin shell around it:
+
+| Surface | Role | Notes |
+|---|---|---|
+| **Web app** (primary) | Connect GitHub, scan, choose style, live editor, open PR | Core runs server-side in sandboxed workers; preview streams from a per-workspace dev server |
+| **CLI** | `morpheus scan`, `restyle`, `port`; CI and power users | Runs the core locally; same output as the web app |
+| **Desktop app** | Local-first: works on a folder on disk, no upload | Wraps the web editor (Tauri or Electron) around the local core, so private code never leaves the machine |
+
+Proposed layout: `packages/core`, `packages/adapters/*`, `apps/web`, `apps/cli`, `apps/desktop`.
+
 ## Two modes
 
 1. **Restyle in place** (same language): only the design layer changes. Content and behavior are untouched, so the diff is small and safe.
@@ -39,16 +51,16 @@ Preview runs the client's real project in a sandbox where possible (dev server p
 
 ## MVP roadmap
 
-1. Site IR schema, plus CLI `morpheus scan <path>` (detector and AI-look score)
+1. `@morpheus/core`: Site IR schema, detector and AI-look score, exposed first through CLI `morpheus scan <path>`
 2. Adapters for plain HTML/CSS and React + Tailwind (read and write); restyle-in-place using presets
 3. Free-text style brief to tokens
-4. Live editor with token controls and preview
-5. GitHub connect and PR output
+4. Web app: live editor with token controls and preview
+5. Web app: GitHub connect and PR output; desktop wrapper around the same editor
 6. More adapters (Vue, Svelte, Astro, server templates) and **port mode** between them
 7. Layout restructuring (section pattern swaps)
 
 ## Open questions
 
 - Which adapters first? (Proposed: plain HTML/CSS and React + Tailwind, which prove the IR from both ends)
-- Hosted SaaS or local-first tool first?
+- Web app hosting model: fully hosted, or hosted editor with an optional local agent for private repos?
 - How should port mode verify that behavior survived translation (tests, visual diff, or both)?
