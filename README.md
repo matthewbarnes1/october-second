@@ -13,6 +13,15 @@ Point Morpheus at a folder or GitHub repo, pick a design style (or describe one 
 5. **Refine live**: edit colors, type, spacing and layout in a real-time preview.
 6. **Ship**: Morpheus opens a pull request against the repo.
 
+## Any stack, in or out
+
+Morpheus reads the site into a framework-neutral model, redesigns it there, and writes it back out. That gives two modes:
+
+- **Restyle**: keep the client's language and change only the visual design.
+- **Port**: reformat the site into a different language or framework.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## What "AI look" means
 
 See [docs/AI_TELLS.md](docs/AI_TELLS.md). Examples: purple-to-blue gradients, centered hero with two pills and a badge, uniform three-card feature grids, emoji as icons, Inter everywhere, identical rounded cards with soft shadows, generic stock copy.
