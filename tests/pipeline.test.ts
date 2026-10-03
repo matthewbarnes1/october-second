@@ -57,11 +57,15 @@ describe('reading a site into the IR', () => {
     expect(ir.pages[0].sections[0].content.ctas[0].href).toBe('/go');
   });
 
-  it('keeps original markup when a section cannot be modelled', async () => {
-    const big = '<section><div><table><tr><td>' + 'cell text '.repeat(60) + '</td></tr></table></div></section>';
+  it('carries unmodelled content through as sanitised rich content instead of dropping it', async () => {
+    const big = '<section><div><table><tr><td>' + 'cell text '.repeat(60) + '</td></tr></table><script>alert(1)</script><p onclick="x()">kept <b>bold</b></p></div></section>';
     const { ir } = await readSite(memVfs({ 'index.html': `<html><body><h1>T</h1>${big}</body></html>` }));
-    const raw = ir.pages[0].sections.find((s) => s.useRaw);
-    expect(raw?.rawHtml).toContain('cell text');
+    const html = renderAll(runRedesign(ir, { depth: 'redesign', preset: 'swiss' }).output).get('index.html')!;
+    expect(html).toContain('cell text');
+    expect(html).toContain('kept <b>bold</b>');
+    const main = html.match(/<main[\s\S]*<\/main>/)![0];
+    expect(main).not.toContain('alert(1)');
+    expect(main).not.toContain('onclick');
   });
 });
 

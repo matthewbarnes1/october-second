@@ -6,7 +6,8 @@ import {
 } from '@morpheus/core';
 import { classify } from './classify';
 import { El, attr, classes, find, findAll, findAllByTag, findByTag, isEl, kids, outer, parseHtml, tag, textOf } from './dom';
-import { extractContent, type ExtractCtx } from './extract';
+import { extractContent, flowOf, type ExtractCtx } from './extract';
+import { safeUrl } from './sanitize';
 import { parseFooter, parseNav } from './nav';
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -66,7 +67,7 @@ function groupLoose(blocks: El[]): El[] {
   let run: El[] = [];
   const flush = () => {
     if (!run.length) return;
-    if (run.length === 1 && !['p', 'a', 'span', 'img', 'br', 'hr'].includes(tag(run[0]))) { out.push(run[0]); run = []; return; }
+    if (run.length === 1 && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'dl', 'table', 'form', 'blockquote', 'figure', 'pre'].includes(tag(run[0]))) { out.push(run[0]); run = []; return; }
     const box: any = { nodeName: 'div', tagName: 'div', attrs: [], namespaceURI: run[0].namespaceURI, childNodes: [], parentNode: run[0].parentNode };
     for (const el of run) { el.parentNode = box; box.childNodes.push(el); }
     out.push(box);
@@ -92,29 +93,55 @@ function modeledChars(c: Section['content']): number {
 
 export interface ReadResult { ir: SiteIR; css: string; htmlFiles: string[] }
 
+const RTL_LANGS = /^(ar|he|fa|ur|ps|sd|yi|dv|ug|ckb|syr)(-|$)/i;
+const MAX_DEPTH = 400;
+const MAX_PAGES = 400;
+
+/** Cheap pre-scan of tag nesting so pathological documents are refused before any recursion happens. */
+function nestingDepth(src: string): number {
+  let depth = 0, max = 0;
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+  for (const m of src.matchAll(/<(\/?)([a-zA-Z][\w:-]*)[^>]*?(\/?)>/g)) {
+    if (m[1]) depth = Math.max(0, depth - 1);
+    else if (!m[3] && !VOID.test(m[2])) { depth += 1; if (depth > max) max = depth; }
+  }
+  return max;
+}
+
+const KEEP_REL = /\b(icon|canonical|manifest|apple-touch-icon|alternate|me|author|license|prev|next|search|webmention|pingback)\b/i;
+const KEEP_META = /viewport|^og:|^twitter:|^article:|^fb:|theme-color|color-scheme|robots|author|keywords|verification|msapplication|apple-mobile|application-name|format-detection|referrer|generator-none/;
+
 export async function readSite(vfs: VFS, opts: ReadOptions = {}): Promise<ReadResult> {
   const stack = await detectStack(vfs);
   const all = (await vfs.list()).filter((p) => !IGNORE.test(p));
-  const htmlFiles = all.filter((p) => /\.html?$/i.test(p)).sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
+  let htmlFiles = all.filter((p) => /\.html?$/i.test(p)).sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
   const warnings: string[] = [];
+  const passthrough: string[] = [];
   if (!htmlFiles.length) warnings.push('No HTML files found; nothing to read.');
+  if (htmlFiles.length > MAX_PAGES) {
+    warnings.push(`Found ${htmlFiles.length} HTML files; only the first ${MAX_PAGES} were analysed.`);
+    htmlFiles = htmlFiles.slice(0, MAX_PAGES);
+  }
 
   const docs: { file: string; doc: any }[] = [];
   let css = '';
   const classNames: string[] = [];
   for (const file of htmlFiles) {
     const src = await vfs.read(file);
-    if (!src) continue;
-    const doc = parseHtml(src);
+    if (src === null) { warnings.push(`${file} could not be read (missing, unreadable or over the size limit).`); passthrough.push(file); continue; }
+    if (!src.trim()) { warnings.push(`${file} is empty.`); continue; }
+    if (nestingDepth(src) > MAX_DEPTH) { warnings.push(`${file} is nested more than ${MAX_DEPTH} levels deep; it was copied through unchanged instead of redesigned.`); passthrough.push(file); continue; }
+    let doc: any;
+    try { doc = parseHtml(src); } catch (e: any) { warnings.push(`${file} could not be parsed (${e?.message ?? 'error'}); copied through unchanged.`); passthrough.push(file); continue; }
     docs.push({ file, doc });
     for (const style of findAllByTag(doc, 'style')) css += '\n' + (style.childNodes ?? []).map((n: any) => n.value ?? '').join('');
     for (const link of findAll(doc, (e) => tag(e) === 'link' && /stylesheet/i.test(attr(e, 'rel') ?? ''))) {
       const href = attr(link, 'href');
       if (!href || /^(https?:)?\/\//.test(href)) continue;
-      const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), href.split('?')[0]));
+      const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), href.split('?')[0].split('#')[0]));
       const text = await vfs.read(resolved);
       if (text) css += '\n' + text;
-      else warnings.push(`Stylesheet ${href} referenced in ${file} was not found.`);
+      else warnings.push(`Stylesheet ${href} referenced in ${file} was not found or could not be read.`);
     }
     walkAll(doc, (e) => { classNames.push(...classes(e)); const st = attr(e, 'style'); if (st) css += `\n.__inline{${st}}`; });
   }
@@ -124,113 +151,19 @@ export async function readSite(vfs: VFS, opts: ReadOptions = {}): Promise<ReadRe
   const pages: Page[] = [];
   const scriptsAll: Page['scripts'] = [];
   for (const { file, doc } of docs) {
-    const htmlEl = findByTag(doc, 'html');
-    const head = findByTag(doc, 'head');
-    const body = findByTag(doc, 'body');
-    if (!body) continue;
-    const title = norm(textOf(findByTag(head ?? doc, 'title')));
-    const metas = head ? findAllByTag(head, 'meta', 'link') : [];
-    const description = metas.map((m) => (attr(m, 'name') === 'description' ? attr(m, 'content') : undefined)).find(Boolean);
-    const headExtras = metas
-      .filter((m) => {
-        const t = tag(m);
-        if (t === 'meta') {
-          const name = (attr(m, 'name') ?? attr(m, 'property') ?? '').toLowerCase();
-          return /viewport|og:|twitter:|theme-color|robots|author|keywords/.test(name) ;
-        }
-        return /icon|canonical|manifest|apple-touch/.test(attr(m, 'rel') ?? '');
-      })
-      .map((m) => outer(m));
-
-    const scripts: Page['scripts'] = [];
-    for (const s of findAllByTag(doc, 'script')) {
-      const src = attr(s, 'src');
-      const inline = (s.childNodes ?? []).map((n: any) => n.value ?? '').join('');
-      if (src && /cdn\.tailwindcss\.com|tailwindcss/.test(src)) continue;
-      if (!src && /tailwind\.config|tailwind\s*=/.test(inline)) continue;
-      if (!src && !inline.trim()) continue;
-      const attrs: Record<string, string> = {};
-      for (const a of s.attrs ?? []) if (a.name !== 'src') attrs[a.name] = a.value;
-      scripts.push({ src, inline: src ? undefined : inline, attrs });
+    try {
+      const page = buildPage(file, doc, ctx, opts, warnings);
+      if (!page) { passthrough.push(file); continue; }
+      scriptsAll.push(...page.scripts);
+      pages.push(page);
+    } catch (e: any) {
+      warnings.push(`${file} could not be analysed (${e?.message ?? 'error'}); copied through unchanged.`);
+      passthrough.push(file);
     }
-    scriptsAll.push(...scripts);
-
-    let blocks = topBlocks(body);
-    // Header
-    let navEl: El | undefined;
-    let headerSkip = new Set<El>();
-    const first = blocks[0];
-    if (first) {
-      const t = tag(first);
-      const hasNav = t === 'nav' || !!findByTag(first, 'nav');
-      const bigHeading = find(first, (e) => /^h[1-2]$/.test(tag(e)));
-      if (t === 'nav' || (t === 'header' && (!bigHeading || (hasNav && textOf(first).length < 300)))) {
-        navEl = first; blocks = blocks.slice(1);
-      } else if (t === 'header' && hasNav && bigHeading) {
-        navEl = findByTag(first, 'nav'); headerSkip = new Set([navEl!]);
-      } else if (hasNav && !bigHeading && textOf(first).length < 400) {
-        navEl = first; blocks = blocks.slice(1);
-      }
-    }
-    // Footer
-    let footerEl: El | undefined;
-    const lastIdx = blocks.length - 1;
-    const last = blocks[lastIdx];
-    if (last && (tag(last) === 'footer' || /\bfooter\b/i.test(classes(last).join(' ') + ' ' + (attr(last, 'id') ?? '')))) {
-      footerEl = last; blocks = blocks.slice(0, lastIdx);
-    }
-    const brandFallback = norm(textOf(navEl ? (findByTag(navEl, 'a') ?? navEl) : doc)).slice(0, 40) || opts.name || 'Site';
-    const nav = parseNav(navEl, brandFallback);
-    const footer = parseFooter(footerEl);
-
-    const sections: Section[] = [];
-    const hasH1 = (b: El) => !!find(b, (e) => tag(e) === 'h1');
-    blocks.forEach((b, i) => {
-      const skip = i === 0 && headerSkip.size ? headerSkip : new Set<El>();
-      if (!textOf(b, skip).length && !findByTag(b, 'img', 'svg', 'video', 'iframe', 'form')) return; // decorative
-      const content = extractContent(b, ctx, skip);
-      const cls = classify(b, content, { isFirst: sections.length === 0, isLast: i === blocks.length - 1, hasH1: hasH1(b), index: sections.length });
-      const raw = outer(b);
-      const total = textOf(b, skip).length;
-      const modeled = modeledChars(content);
-      const useRaw = total > 160 && modeled / total < 0.4;
-      const section: Section = {
-        id: uid('sec'),
-        anchor: attr(b, 'id') ?? undefined,
-        intent: cls.intent,
-        confidence: cls.confidence,
-        pattern: conventionalPattern(cls.intent, content.alignment, content.media.length > 0),
-        variant: { tone: 'plain', spacing: 'normal', align: content.alignment },
-        content,
-        rawHtml: raw,
-        useRaw,
-        origin: { tag: tag(b), classes: classes(b) },
-        attachments: [],
-        notes: useRaw ? [`Only ${Math.round((modeled / Math.max(total, 1)) * 100)}% of this section's text could be modelled; original markup is kept.`] : [],
-      };
-      if (content.logos?.length && cls.intent !== 'logos') section.attachments = [];
-      sections.push(section);
-    });
-
-    // Content that used to be in a combined header+hero gets the nav CTA only once
-    pages.push({
-      id: uid('page'),
-      route: routeOf(file),
-      file,
-      title,
-      description,
-      lang: htmlEl ? attr(htmlEl, 'lang') : undefined,
-      nav,
-      sections,
-      footer,
-      chrome: { header: 'header-bar', footer: 'footer-columns' },
-      headExtras,
-      scripts,
-    });
   }
 
   let name = opts.name ?? pages[0]?.nav.brand.text ?? 'site';
-  if (name.length > 40) name = pages[0]?.title.split(/[|–—·-]/)[0].trim() || 'site';
+  if (name.length > 40) name = pages[0]?.title.split(/[|\u2013\u2014\u00b7-]/)[0].trim() || 'site';
 
   const ir: SiteIR = {
     version: 1,
@@ -245,10 +178,151 @@ export async function readSite(vfs: VFS, opts: ReadOptions = {}): Promise<ReadRe
       legacyCss: css,
     },
     redirects: [],
+    passthrough,
     changeLog: [],
     warnings,
   };
   return { ir, css, htmlFiles };
+}
+
+const textOnly = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+
+const HEAD_ATTRS = new Set(['name', 'content', 'property', 'rel', 'href', 'hreflang', 'type', 'sizes', 'title', 'color', 'media', 'as', 'crossorigin', 'charset']);
+
+/** Head tags are rebuilt from an attribute allow-list so no handler or script URL can ride along. */
+function safeHeadTag(m: El): string {
+  const t = tag(m);
+  let attrs = '';
+  for (const a of m.attrs ?? []) {
+    if (!HEAD_ATTRS.has(a.name)) continue;
+    if (a.name === 'href' && !safeUrl(a.value)) continue;
+    attrs += ` ${a.name}="${String(a.value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"`;
+  }
+  return attrs ? `<${t}${attrs}>` : '';
+}
+
+function buildPage(file: string, doc: any, ctx: ExtractCtx, opts: ReadOptions, warnings: string[]): Page | null {
+  const htmlEl = findByTag(doc, 'html');
+  const head = findByTag(doc, 'head');
+  const body = findByTag(doc, 'body');
+  if (!body) return null;
+  const title = norm(textOf(findByTag(head ?? doc, 'title')));
+  const metas = head ? findAllByTag(head, 'meta', 'link') : [];
+  const description = metas.map((m) => (attr(m, 'name') === 'description' ? attr(m, 'content') : undefined)).find(Boolean);
+  const headExtras = metas
+    .filter((m) => {
+      if (tag(m) === 'meta') return KEEP_META.test((attr(m, 'name') ?? attr(m, 'property') ?? '').toLowerCase());
+      return KEEP_REL.test(attr(m, 'rel') ?? '') && !/stylesheet/i.test(attr(m, 'rel') ?? '');
+    })
+    .map((m) => safeHeadTag(m))
+    .filter(Boolean);
+
+  const scripts: Page['scripts'] = [];
+  for (const s of findAllByTag(doc, 'script')) {
+    const src = attr(s, 'src');
+    const inline = (s.childNodes ?? []).map((n: any) => n.value ?? '').join('');
+    if (src && /cdn\.tailwindcss\.com|tailwindcss/.test(src)) continue;
+    if (!src && /tailwind\.config|tailwind\s*=/.test(inline)) continue;
+    if (!src && !inline.trim()) continue;
+    const attrs: Record<string, string> = {};
+    for (const a of s.attrs ?? []) if (a.name !== 'src') attrs[a.name] = a.value;
+    scripts.push({ src, inline: src ? undefined : inline, attrs });
+  }
+
+  const bodyText = norm(textOf(body));
+  if (bodyText.length < 25 && (scripts.some((s) => s.attrs?.type === 'module' || s.src) || find(body, (e) => /^(root|app|__next|__nuxt|svelte)$/.test(attr(e, 'id') ?? '')))) {
+    warnings.push(`${file} looks like a client-rendered app shell (almost no static content, rendered by JavaScript). There is nothing static to redesign here; point Morpheus at the source project or a server-rendered build.`);
+  }
+
+  let blocks = topBlocks(body);
+  // Header
+  let navEl: El | undefined;
+  let headerSkip = new Set<El>();
+  const first = blocks[0];
+  if (first) {
+    const t = tag(first);
+    const hasNav = t === 'nav' || !!findByTag(first, 'nav');
+    const bigHeading = find(first, (e) => /^h[1-2]$/.test(tag(e)));
+    if (t === 'nav' || (t === 'header' && (!bigHeading || (hasNav && textOf(first).length < 300)))) {
+      navEl = first; blocks = blocks.slice(1);
+    } else if (t === 'header' && hasNav && bigHeading) {
+      navEl = findByTag(first, 'nav'); headerSkip = new Set([navEl!]);
+    } else if (hasNav && !bigHeading && textOf(first).length < 400) {
+      navEl = first; blocks = blocks.slice(1);
+    }
+  }
+  // Footer
+  let footerEl: El | undefined;
+  const lastIdx = blocks.length - 1;
+  const last = blocks[lastIdx];
+  if (last && (tag(last) === 'footer' || /\bfooter\b/i.test(classes(last).join(' ') + ' ' + (attr(last, 'id') ?? '')))) {
+    footerEl = last; blocks = blocks.slice(0, lastIdx);
+  }
+  const brandFallback = norm(textOf(navEl ? (findByTag(navEl, 'a') ?? navEl) : doc)).slice(0, 40) || opts.name || 'Site';
+  const nav = parseNav(navEl, brandFallback);
+  const footer = parseFooter(footerEl);
+
+  const sections: Section[] = [];
+  const hasH1 = (b: El) => !!find(b, (e) => tag(e) === 'h1');
+  blocks.forEach((b, i) => {
+    const skip = i === 0 && headerSkip.size ? headerSkip : new Set<El>();
+    if (!textOf(b, skip).length && !findByTag(b, 'img', 'svg', 'video', 'iframe', 'form', 'picture', 'audio')) return; // decorative
+    const content = extractContent(b, ctx, skip);
+    let flowMode = false;
+    const cls = classify(b, content, { isFirst: sections.length === 0, isLast: i === blocks.length - 1, hasH1: hasH1(b), index: sections.length });
+    // Articles and documentation: keep the natural reading order instead of forcing card structure on prose.
+    const structured = content.items.length >= 2 || !!content.stats || !!content.logos?.length;
+    const proseHeavy = (content.extra?.length ?? 0) >= 3 && !structured;
+    if (((cls.intent === 'content' || cls.intent === 'unknown') && !structured) || proseHeavy) {
+      let flow = flowOf(b, skip);
+      const drop = (needle?: string) => {
+        if (!needle) return;
+        const k = flow.findIndex((h) => textOnly(h) === needle.trim());
+        if (k >= 0) flow.splice(k, 1);
+      };
+      drop(content.heading); drop(content.eyebrow);
+      if (flow.length) {
+        content.flow = flow;
+        content.paragraphs = []; content.sub = undefined; content.ctas = []; content.media = []; content.extra = undefined;
+        flowMode = true;
+      }
+    }
+    const section: Section = {
+      id: uid('sec'),
+      anchor: attr(b, 'id') ?? undefined,
+      intent: cls.intent,
+      confidence: cls.confidence,
+      pattern: flowMode ? 'content-prose' : conventionalPattern(cls.intent, content.alignment, content.media.length > 0),
+      variant: { tone: 'plain', spacing: 'normal', align: content.alignment },
+      content,
+      rawHtml: '',
+      useRaw: false,
+      origin: { tag: tag(b), classes: classes(b) },
+      attachments: [],
+      notes: [],
+    };
+    sections.push(section);
+  });
+
+  const langAttr = htmlEl ? attr(htmlEl, 'lang') : undefined;
+  const dirAttr = (htmlEl && attr(htmlEl, 'dir')) || attr(body, 'dir');
+  const dir = dirAttr === 'rtl' || dirAttr === 'ltr' ? dirAttr : langAttr && RTL_LANGS.test(langAttr) ? 'rtl' : undefined;
+
+  return {
+    id: uid('page'),
+    route: routeOf(file),
+    file,
+    title,
+    description,
+    lang: langAttr,
+    dir,
+    nav,
+    sections,
+    footer,
+    chrome: { header: 'header-bar', footer: 'footer-columns' },
+    headExtras,
+    scripts,
+  };
 }
 
 function inferStyle() {

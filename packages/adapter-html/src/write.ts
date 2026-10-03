@@ -27,8 +27,16 @@ export function scopeCss(css: string, scope = '.m-raw'): string {
   return root.toString();
 }
 
-export function renderPage(ir: SiteIR, page: Page, cssHref: string, opts: { legacyHref?: string; editor?: boolean } = {}): string {
-  const fonts = googleFontsHref(ir.style);
+function darkBg(ir: SiteIR): boolean {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ir.style.colors.bg);
+  if (!m) return false;
+  return (0.2126 * parseInt(m[1], 16) + 0.7152 * parseInt(m[2], 16) + 0.0722 * parseInt(m[3], 16)) / 255 < 0.4;
+}
+
+export interface RenderOptions { /** false = do not link Google Fonts; the fallback stacks are used (privacy and speed). */ webFonts?: boolean }
+
+export function renderPage(ir: SiteIR, page: Page, cssHref: string, opts: { legacyHref?: string; editor?: boolean } & RenderOptions = {}): string {
+  const fonts = opts.webFonts === false ? null : googleFontsHref(ir.style);
   const hasRaw = page.sections.some((s) => s.useRaw);
   const extras = page.headExtras.filter((h) => !/viewport/i.test(h)).join('\n  ');
   const scripts = page.scripts
@@ -38,11 +46,12 @@ export function renderPage(ir: SiteIR, page: Page, cssHref: string, opts: { lega
     })
     .join('\n');
   const title = page.title || ir.name;
-  return `<!doctype html>
-<html lang="${esc(page.lang ?? 'en')}">
+  return `<!DOCTYPE html>
+<html lang="${esc(page.lang ?? 'en')}"${page.dir === 'rtl' ? ' dir="rtl"' : ''}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="${darkBg(ir) ? 'dark' : ir.style.darkMode === 'auto' ? 'light dark' : 'light'}">
   <title>${esc(title)}</title>
   ${page.description ? `<meta name="description" content="${esc(page.description)}">` : ''}
   ${extras}
@@ -63,7 +72,7 @@ ${scripts}
 `;
 }
 
-export interface WriteOptions { sourceDir?: string }
+export interface WriteOptions extends RenderOptions { sourceDir?: string }
 
 export function buildAssets(ir: SiteIR): { css: string; legacy: string } {
   const legacy = ir.behavior.legacyCss && ir.pages.some((p) => p.sections.some((s) => s.useRaw)) ? scopeCss(ir.behavior.legacyCss) : '';
@@ -75,13 +84,13 @@ export function rel(from: string, to: string): string {
   return r || to;
 }
 
-export function renderAll(ir: SiteIR): Map<string, string> {
+export function renderAll(ir: SiteIR, opts: RenderOptions = {}): Map<string, string> {
   const out = new Map<string, string>();
   const { css, legacy } = buildAssets(ir);
   out.set('morpheus.css', css);
   if (legacy) out.set('morpheus-legacy.css', legacy);
   for (const page of ir.pages) {
-    out.set(page.file, renderPage(ir, page, rel(page.file, 'morpheus.css'), { legacyHref: legacy ? rel(page.file, 'morpheus-legacy.css') : undefined }));
+    out.set(page.file, renderPage(ir, page, rel(page.file, 'morpheus.css'), { legacyHref: legacy ? rel(page.file, 'morpheus-legacy.css') : undefined, webFonts: opts.webFonts }));
   }
   return out;
 }
@@ -91,7 +100,10 @@ async function copyTree(src: string, dest: string, rootSrc = src): Promise<void>
     if (SKIP_COPY.has(e.name)) continue;
     const s = path.join(src, e.name);
     const d = path.join(dest, e.name);
+    if (e.isSymbolicLink()) continue; // never follow links out of the project
+    if (e.name.startsWith('.') && e.name !== '.well-known') continue; // .env, .git*, editor files
     if (e.isDirectory()) { await fs.mkdir(d, { recursive: true }); await copyTree(s, d, rootSrc); continue; }
+    if (!e.isFile()) continue;
     if (/\.(html?|css|scss|sass|less)$/i.test(e.name)) continue; // replaced by the redesign
     await fs.copyFile(s, d);
   }
@@ -100,10 +112,22 @@ async function copyTree(src: string, dest: string, rootSrc = src): Promise<void>
 export async function writeSite(ir: SiteIR, outDir: string, opts: WriteOptions = {}): Promise<string[]> {
   await fs.mkdir(outDir, { recursive: true });
   if (opts.sourceDir) await copyTree(opts.sourceDir, outDir);
-  const files = renderAll(ir);
+  if (opts.sourceDir) {
+    // Pages Morpheus could not safely analyse are shipped exactly as they were.
+    for (const f of ir.passthrough ?? []) {
+      const src = path.resolve(opts.sourceDir, f);
+      const dest = path.resolve(outDir, f);
+      if (!dest.startsWith(path.resolve(outDir) + path.sep) || !src.startsWith(path.resolve(opts.sourceDir) + path.sep)) continue;
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.copyFile(src, dest).catch(() => {});
+    }
+  }
+  const files = renderAll(ir, { webFonts: opts.webFonts });
   const written: string[] = [];
+  const base = path.resolve(outDir);
   for (const [rel, content] of files) {
-    const full = path.join(outDir, rel);
+    const full = path.resolve(base, rel);
+    if (path.isAbsolute(rel) || (full !== base && !full.startsWith(base + path.sep))) throw new Error(`Refusing to write outside the output folder: ${rel}`);
     await fs.mkdir(path.dirname(full), { recursive: true });
     await fs.writeFile(full, content, 'utf8');
     written.push(rel);

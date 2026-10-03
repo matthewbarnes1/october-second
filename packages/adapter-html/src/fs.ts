@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { VFS } from '@morpheus/core';
 
+export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.nuxt', '.svelte-kit', '.morpheus-out', 'vendor']);
 
 export function nodeVfs(root: string): VFS & { root: string } {
@@ -24,7 +25,15 @@ export function nodeVfs(root: string): VFS & { root: string } {
     },
     async read(p: string) {
       try {
-        return await fs.readFile(path.join(root, p), 'utf8');
+        // Stay inside the project: a stylesheet href like ../../etc/passwd must not be readable,
+        // and symlinks that point outside the root are not followed.
+        const full = path.resolve(root, p);
+        const base = await fs.realpath(root);
+        const real = await fs.realpath(full);
+        if (real !== base && !real.startsWith(base + path.sep)) return null;
+        const st = await fs.stat(real);
+        if (!st.isFile() || st.size > MAX_FILE_BYTES) return null;
+        return await fs.readFile(real, 'utf8');
       } catch {
         return null;
       }

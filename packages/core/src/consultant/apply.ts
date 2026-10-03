@@ -65,6 +65,10 @@ export function applyOp(ir: SiteIR, op: Operation): void {
         if (p.lang) page.lang = p.lang;
         if (p.description) page.description = p.description;
         if (p.title) page.title = p.title;
+        if (p.og) {
+          const q = (v: string) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+          page.headExtras.push(`<meta property="og:title" content="${q(p.og.title)}">`, ...(p.og.description ? [`<meta property="og:description" content="${q(p.og.description)}">`] : []), '<meta property="og:type" content="website">', '<meta name="twitter:card" content="summary">');
+        }
         if (p.viewport && !page.headExtras.some((h) => /viewport/i.test(h))) page.headExtras.push('<meta name="viewport" content="width=device-width, initial-scale=1">');
       }
       break;
@@ -92,7 +96,7 @@ export function applyOp(ir: SiteIR, op: Operation): void {
       break;
 
     case 'strip-badge':
-      if (section) section.content.eyebrow = undefined;
+      if (section) { section.content.eyebrow = p.text ?? section.content.eyebrow; section.content.eyebrowKind = 'kicker'; }
       break;
 
     case 'set-rhythm':

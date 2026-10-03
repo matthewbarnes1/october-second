@@ -1,6 +1,6 @@
 import type { Cta, Footer, Nav, NavLink } from '@morpheus/core';
 import { El, attr, classes, find, findAll, findAllByTag, findByTag, isEl, kids, outer, tag, textOf } from './dom';
-import { ctaOf, mediaOf } from './extract';
+import { ctaOf, leftovers, mediaOf, tokens } from './extract';
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
 
@@ -99,5 +99,9 @@ export function parseFooter(root: El | undefined): Footer {
   if (legal) footer.legal = norm(textOf(legal));
   const blurb = find(root, (e) => tag(e) === 'p' && !/©|copyright/i.test(textOf(e)) && norm(textOf(e)).length > 20 && !findByTag(e, 'a'));
   if (blurb) footer.blurb = norm(textOf(blurb));
+  // Coverage: any footer text the structure above did not capture (addresses, registration lines, notices)
+  const modeled = [footer.blurb, footer.legal, ...footer.columns.flatMap((c) => [c.title, ...c.links.map((l) => l.label)]), ...footer.social.map((l) => l.label)].filter(Boolean).join(' ');
+  const extra = leftovers(root, new Set(), new Set(tokens(modeled)));
+  if (extra.length) footer.extra = extra;
   return footer;
 }

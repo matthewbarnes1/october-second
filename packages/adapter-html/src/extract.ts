@@ -1,6 +1,7 @@
 import type { Cta, FormModel, Item, Media, SectionContent } from '@morpheus/core';
 import { EMOJI_RE } from '@morpheus/core';
-import { El, attr, classes, contains, find, findAll, findAllByTag, findByTag, isEl, kids, outer, signature, tag, textOf } from './dom';
+import { El, attr, classes, contains, find, findAll, findAllByTag, findByTag, isEl, isText, kids, outer, signature, tag, textOf } from './dom';
+import { safeUrl, sanitizeFragment, sanitizeNode, sanitizeSvg } from './sanitize';
 
 export interface ExtractCtx {
   /** Class names whose CSS centres text. Built from the stylesheet. */
@@ -29,16 +30,41 @@ export function isCentered(el: El, ctx: ExtractCtx): boolean {
   return check(el) || check(h) || check(h?.parentNode) || check(h?.parentNode?.parentNode);
 }
 
+function imgMedia(e: El): Media {
+  const src = attr(e, 'src') ?? attr(e, 'data-src');
+  return {
+    kind: 'image',
+    src: src && safeUrl(src) ? src : undefined,
+    alt: attr(e, 'alt'),
+    srcset: attr(e, 'srcset') ?? attr(e, 'data-srcset'),
+    sizes: attr(e, 'sizes'),
+    width: attr(e, 'width'),
+    height: attr(e, 'height'),
+  };
+}
+
 export function mediaOf(e: El): Media | null {
   const t = tag(e);
-  if (t === 'img') return { kind: 'image', src: attr(e, 'src') ?? attr(e, 'data-src'), alt: attr(e, 'alt') };
+  if (t === 'img') return imgMedia(e);
   if (t === 'picture') {
     const img = findByTag(e, 'img');
-    return img ? mediaOf(img) : null;
+    if (!img) return null;
+    const m = imgMedia(img);
+    m.sources = findAllByTag(e, 'source').map((s) => ({ srcset: attr(s, 'srcset'), media: attr(s, 'media'), type: attr(s, 'type'), sizes: attr(s, 'sizes') })).filter((s) => s.srcset);
+    return m;
   }
-  if (t === 'svg') return { kind: 'svg', html: outer(e) };
-  if (t === 'video') return { kind: 'video', src: attr(e, 'src') ?? attr(findByTag(e, 'source'), 'src'), html: outer(e) };
-  if (t === 'iframe') return { kind: 'embed', src: attr(e, 'src'), html: outer(e) };
+  if (t === 'svg') return { kind: 'svg', html: sanitizeSvg(e) };
+  if (t === 'video' || t === 'audio') {
+    const src = attr(e, 'src') ?? attr(findByTag(e, 'source'), 'src');
+    return { kind: 'video', src, html: sanitizeFragment(e) };
+  }
+  if (t === 'iframe') {
+    const src = attr(e, 'src') ?? '';
+    if (!/^https:\/\//i.test(src)) return null;
+    const title = (attr(e, 'title') ?? '').replace(/"/g, '&quot;');
+    const q = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    return { kind: 'embed', src, html: `<iframe src="${q(src)}" title="${title}" loading="lazy" allowfullscreen referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>` };
+  }
   return null;
 }
 
@@ -217,6 +243,17 @@ function walkContainers(n: El, fn: (e: El) => void) {
   }
 }
 
+function selectGroups(sel: El): { label?: string; options: string[] }[] {
+  const groups: { label?: string; options: string[] }[] = [];
+  let loose: string[] = [];
+  for (const k of kids(sel)) {
+    if (tag(k) === 'optgroup') { if (loose.length) { groups.push({ options: loose }); loose = []; } groups.push({ label: attr(k, 'label'), options: findAllByTag(k, 'option').map((o) => norm(textOf(o))) }); }
+    else if (tag(k) === 'option') loose.push(norm(textOf(k)));
+  }
+  if (loose.length) groups.push({ options: loose });
+  return groups;
+}
+
 function formOf(f: El): FormModel {
   const fields: FormModel['fields'] = [];
   for (const el of findAll(f, (e) => ['input', 'textarea', 'select'].includes(tag(e)))) {
@@ -229,13 +266,19 @@ function formOf(f: El): FormModel {
     while (p && isEl(p) && p !== f) { if (tag(p) === 'label') { wrap = p; break; } p = p.parentNode; }
     const labelEl = forLabel ?? wrap;
     const labelText = labelEl ? norm(textOf(labelEl, new Set([el]))) : attr(el, 'aria-label');
+    let fs: El | undefined;
+    for (let q = el.parentNode; q && isEl(q) && q !== f; q = q.parentNode) { if (tag(q) === 'fieldset') { fs = q; break; } }
+    const legend = fs ? norm(textOf(findByTag(fs, 'legend'))) : '';
     fields.push({
+      fieldset: legend || undefined,
       name: attr(el, 'name') ?? id,
       label: labelText || undefined,
       type,
       required: attr(el, 'required') !== undefined || attr(el, 'aria-required') === 'true',
       placeholder: attr(el, 'placeholder'),
       options: tag(el) === 'select' ? findAllByTag(el, 'option').map((o) => norm(textOf(o))) : undefined,
+      value: attr(el, 'value'),
+      optionGroups: tag(el) === 'select' ? selectGroups(el) : undefined,
     });
   }
   const submit = find(f, (e) => (tag(e) === 'button' && (attr(e, 'type') ?? 'submit') === 'submit') || (tag(e) === 'input' && attr(e, 'type') === 'submit'));
@@ -249,10 +292,12 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
   const content: SectionContent = { paragraphs: [], ctas: [], items: [], media: [], alignment: isCentered(section, ctx) ? 'center' : 'left' };
 
   const inIgnore = (e: El) => [...ignore].some((i) => contains(i, e));
+  /** Elements whose content the structured model now holds. Everything else is carried over as rich content. */
+  const consumed = new Set<El>();
 
   // Form
   const form = findByTag(section, 'form');
-  if (form && !inIgnore(form)) content.form = formOf(form);
+  if (form && !inIgnore(form)) { content.form = formOf(form); consumed.add(form); }
 
   // Repeater
   const exclude = new Set<El>(ignore);
@@ -264,12 +309,20 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
     const onlyImgs = rep.every((r) => (tag(r) === 'img' || (kids(r).length <= 2 && !!findByTag(r, 'img', 'svg') && textOf(r).length < 14)));
     if (onlyImgs) {
       content.logos = rep.map((r) => (tag(r) === 'img' ? mediaOf(r) : mediaOf(findByTag(r, 'img', 'svg')!))).filter((m): m is Media => !!m);
-      rep.forEach((r) => repSet.add(r));
+      rep.forEach((r) => { repSet.add(r); consumed.add(r); });
     } else if (items.length >= 2) {
       const statLike = items.filter((i) => i.title && STAT_VALUE.test(i.title) && !i.body?.length && false);
       void statLike;
       content.items = items;
-      rep.forEach((r) => repSet.add(r));
+      // Per item: anything the item model missed (extra paragraphs, labels, nested lists) stays attached to that item.
+      rep.forEach((r, i) => {
+        repSet.add(r); consumed.add(r);
+        const it = content.items[i];
+        if (!it) return;
+        const have = new Set(tokens(modeledText({ ...emptyBase(), items: [it] })));
+        const lo = leftovers(r, new Set(), have);
+        if (lo.length) it.extra = lo;
+      });
     }
   }
 
@@ -295,7 +348,7 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
     });
     if (statBlocks.length >= 2) {
       content.stats = statBlocks.map((e) => ({ value: norm(textOf(kids(e)[0])), label: norm(textOf(kids(e)[1])) }));
-      statBlocks.forEach((e) => repSet.add(e));
+      statBlocks.forEach((e) => { repSet.add(e); consumed.add(e); });
     }
   }
 
@@ -307,6 +360,7 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
   if (heading) {
     content.heading = norm(textOf(heading));
     content.headingLevel = Number(tag(heading)[1]);
+    consumed.add(heading);
   }
 
   // Eyebrow / kicker: a short element before the heading
@@ -319,7 +373,12 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
     if (cand && cand !== heading && !inRepeater(cand)) {
       const txt = norm(textOf(cand));
       const looksBadge = BADGE_CLASS.test(classes(cand).join(' ')) || (['span', 'p', 'div', 'small'].includes(tag(cand)) && txt.length < 60 && !findByTag(cand, 'a', 'button', 'img'));
-      if (txt && txt.length < 80 && looksBadge && !/^h[1-6]$/.test(tag(cand))) content.eyebrow = txt;
+      if (txt && txt.length < 80 && looksBadge && !/^h[1-6]$/.test(tag(cand))) {
+        content.eyebrow = txt;
+        consumed.add(cand);
+        const cl = classes(cand).join(' ');
+        content.eyebrowKind = /badge|pill|chip|announce|rounded-full|rounded-xl|\bborder\b|\bbg-/.test(cl) ? 'pill' : 'kicker';
+      }
     }
   }
 
@@ -333,31 +392,135 @@ export function extractContent(section: El, ctx: ExtractCtx, ignore: Set<El> = n
     if (seenCta.has(k)) return;
     seenCta.add(k);
     content.ctas.push(c);
+    consumed.add(b);
   });
   // Eyebrow can't be a CTA
   if (content.eyebrow && content.ctas.some((c) => c.text === content.eyebrow)) content.eyebrow = undefined;
 
-  // Paragraphs and sub
+  // Paragraphs and sub. Only free-standing paragraphs: those inside quotes, lists, tables, figures and
+  // similar keep their structure and are carried over whole by the coverage pass.
   const ctaEls = new Set<El>(btns);
-  const paras = findAllByTag(section, 'p').filter((p) => !inRepeater(p) && !inForm(p) && !inIgnore(p) && ![...ctaEls].some((c) => contains(c, p)) && !contains(p, heading ?? {}));
-  const ptexts = paras.map((p) => norm(textOf(p))).filter((t) => t && t !== content.eyebrow && t !== content.heading);
+  const STRUCTURAL = ['blockquote', 'li', 'td', 'th', 'dd', 'dt', 'figure', 'details', 'pre', 'table', 'ul', 'ol', 'dl', 'address', 'fieldset', 'label', 'aside'];
+  const paras = findAllByTag(section, 'p').filter((p) => !inRepeater(p) && !inForm(p) && !inIgnore(p) && ![...ctaEls].some((c) => contains(c, p)) && !contains(p, heading ?? {}) && !ancestorsTag(p, section, STRUCTURAL));
+  const usedParas: El[] = [];
+  const ptexts: string[] = [];
+  for (const p of paras) {
+    const t = norm(textOf(p));
+    if (t && t !== content.eyebrow && t !== content.heading) { ptexts.push(t); usedParas.push(p); }
+  }
   if (ptexts.length) {
     // Sub = the first paragraph if it follows the heading closely
     content.sub = ptexts[0];
     content.paragraphs = ptexts.slice(1);
     if (!content.heading && ptexts.length > 1) { content.sub = undefined; content.paragraphs = ptexts; }
+    usedParas.forEach((p) => consumed.add(p));
   }
 
-  // Media outside items
-  for (const m of findAll(section, (e) => ['img', 'svg', 'video', 'iframe', 'picture'].includes(tag(e)))) {
+  // Media outside items (including a section that is itself a single media element)
+  const mediaEls = ['img', 'svg', 'video', 'audio', 'iframe', 'picture'];
+  const candidates = [...(mediaEls.includes(tag(section)) ? [section] : []), ...findAll(section, (e) => mediaEls.includes(tag(e)))];
+  for (const m of candidates) {
     if (inRepeater(m) || inForm(m) || inIgnore(m)) continue;
     // svg inside an inline button/link isn't hero media
     if (tag(m) === 'svg' && (ancestorsTag(m, section, ['a', 'button']) || (kids(m).length === 0))) continue;
-    if (tag(m) === 'img' && ancestorsTag(m, section, ['picture'])) continue;
+    if (['img', 'picture'].includes(tag(m)) && ancestorsTag(m, section, ['picture', 'figure', 'table', 'details', 'blockquote', 'button'])) continue;
+    if (ancestorsTag(m, section, ['a']) && tag(m) === 'svg') continue;
     const media = mediaOf(m);
-    if (media) content.media.push(media);
+    if (media) { content.media.push(media); consumed.add(m); }
   }
+  const extra = leftovers(section, consumed);
+  if (extra.length) content.extra = extra;
   return content;
+}
+
+function emptyBase(): SectionContent {
+  return { paragraphs: [], ctas: [], items: [], media: [], alignment: 'left' };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Coverage guarantee. The structured model only captures what it recognises; whatever it misses is
+// carried through as sanitised rich content so a redesign can never silently drop client content.
+
+const TOKEN = /[\p{L}\p{N}][\p{L}\p{N}'\u2019-]*/gu;
+export const tokens = (text: string): string[] => (text.toLowerCase().match(TOKEN) ?? []).filter((t) => t.length >= 2);
+
+export function modeledText(c: SectionContent): string {
+  const parts: (string | undefined)[] = [c.eyebrow, c.heading, c.sub, ...c.paragraphs, ...c.ctas.map((x) => x.text)];
+  for (const it of c.items) parts.push(it.title, it.body, it.meta, it.price, it.quote?.text, it.quote?.author, it.quote?.role, it.cta?.text, ...(it.bullets ?? []), it.image?.alt);
+  for (const st of c.stats ?? []) parts.push(st.value, st.label);
+  for (const m of [...c.media, ...(c.logos ?? [])]) parts.push(m.alt);
+  if (c.form) {
+    parts.push(c.form.submitText);
+    for (const f of c.form.fields) parts.push(f.label, f.placeholder, f.fieldset, f.value, ...(f.options ?? []), ...(f.optionGroups ?? []).map((g) => g.label));
+  }
+  return parts.filter(Boolean).join(' \n ');
+}
+
+const STRUCT = new Set(['table', 'dl', 'ul', 'ol', 'pre', 'blockquote', 'figure', 'details', 'address', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const INLINE = new Set(['a', 'span', 'strong', 'em', 'b', 'i', 'small', 'code', 'mark', 'abbr', 'time', 'label', 'cite', 'q', 'u', 's', 'sub', 'sup', 'kbd']);
+const SKIP_RESIDUAL = new Set(['script', 'style', 'noscript', 'template', 'form', 'nav', 'svg', 'button', 'select', 'textarea', 'input']);
+const MEDIA_TAGS = new Set(['img', 'picture', 'video', 'audio', 'iframe']);
+const escHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Everything under `root` that is not inside a consumed element, as sanitised blocks in source order.
+ * With `have`, a node is skipped when all of its words are already present (used inside small items).
+ */
+export function leftovers(root: El, consumed: Set<El>, have?: Set<string>): string[] {
+  const out: string[] = [];
+  const holdsConsumed = new Set<El>();
+  for (const c of consumed) for (let a = c.parentNode; a && isEl(a); a = a.parentNode) { if (holdsConsumed.has(a)) break; holdsConsumed.add(a); }
+  const wordy = (t: string) => tokens(t).some((x) => !have || !have.has(x));
+  const visit = (el: El, depth: number) => {
+    if (depth > 60) return;
+    for (const node of (el.childNodes ?? []) as any[]) {
+      if (isText(node)) {
+        const t = (node.value as string).replace(/\s+/g, ' ').trim();
+        if (t && wordy(t)) out.push(`<p>${escHtml(t)}</p>`);
+        continue;
+      }
+      if (!isEl(node) || consumed.has(node)) continue;
+      const t = tag(node);
+      if (SKIP_RESIDUAL.has(t)) continue;
+      if (MEDIA_TAGS.has(t)) {
+        const m = mediaOf(node);
+        const h = m ? (m.kind === 'image' ? sanitizeFragment(node) : m.html ?? '') : '';
+        if (h && !have) out.push(h);
+        continue;
+      }
+      const text = textOf(node);
+      if (!text && !findByTag(node, 'img', 'picture', 'video', 'audio', 'iframe')) continue;
+      if (text && !wordy(text) && !findByTag(node, 'img', 'picture', 'video', 'audio', 'iframe')) continue;
+      if (holdsConsumed.has(node)) { visit(node, depth + 1); continue; }
+      if (STRUCT.has(t)) { const h = sanitizeFragment(node); if (h) out.push(h); continue; }
+      if (INLINE.has(t)) { const h = sanitizeFragment(node); if (h) out.push(`<p>${h}</p>`); continue; }
+      visit(node, depth + 1);
+    }
+  };
+  visit(root, 0);
+  return out.filter(Boolean).slice(0, 400);
+}
+
+const FLOW_LEAF = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'pre', 'table', 'dl', 'blockquote', 'figure', 'details', 'hr', 'address', 'img', 'picture', 'video', 'audio']);
+
+/** Article/documentation bodies keep their natural reading order as sanitised blocks. */
+export function flowOf(section: El, skip: Set<El>): string[] {
+  const out: string[] = [];
+  const visit = (el: El, depth: number) => {
+    if (depth > 60) return;
+    for (const node of (el.childNodes ?? []) as any[]) {
+      if (isText(node)) { const t = (node.value as string).replace(/\s+/g, ' ').trim(); if (t) out.push(`<p>${escHtml(t)}</p>`); continue; }
+      if (!isEl(node) || skip.has(node)) continue;
+      const t = tag(node);
+      if (SKIP_RESIDUAL.has(t) && !(t === 'button')) continue;
+      if (t === 'iframe') { const m = mediaOf(node); if (m?.html) out.push(m.html); continue; }
+      if (FLOW_LEAF.has(t)) { const h = sanitizeFragment(node); if (h) out.push(h); continue; }
+      if (INLINE.has(t) || t === 'button') { const h = sanitizeFragment(node); if (h) out.push(`<p>${h}</p>`); continue; }
+      visit(node, depth + 1);
+    }
+  };
+  visit(section, 0);
+  return out.slice(0, 2000);
 }
 
 function ancestorsTag(n: El, stop: El, tags: string[]): boolean {

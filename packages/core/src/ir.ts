@@ -31,6 +31,13 @@ export interface Media {
   kind: 'image' | 'video' | 'svg' | 'embed';
   src?: string;
   alt?: string;
+  /** Responsive-image data, kept so the redesign never degrades what the original shipped. */
+  srcset?: string;
+  sizes?: string;
+  width?: string;
+  height?: string;
+  sources?: { srcset?: string; media?: string; type?: string; sizes?: string }[];
+  /** Sanitised markup for video/audio/svg/embed. */
   html?: string;
 }
 
@@ -47,9 +54,11 @@ export interface Item {
   quote?: { text: string; author?: string; role?: string; avatar?: Media };
   highlighted?: boolean;
   cta?: Cta;
+  /** Sanitised leftovers inside this item (extra paragraphs, labels, nested lists). */
+  extra?: string[];
 }
 
-export interface FormField { name?: string; label?: string; type: string; required: boolean; placeholder?: string; options?: string[]; group?: 'optional' }
+export interface FormField { fieldset?: string; value?: string; name?: string; label?: string; type: string; required: boolean; placeholder?: string; options?: string[]; optionGroups?: { label?: string; options: string[] }[]; group?: 'optional' }
 export interface FormModel { action?: string; method?: string; fields: FormField[]; submitText: string }
 
 export interface SectionContent {
@@ -65,6 +74,15 @@ export interface SectionContent {
   stats?: { value: string; label: string }[];
   logos?: Media[];
   alignment: 'left' | 'center';
+  /** 'pill' = the original styled it as a badge. The redesign renders every eyebrow as a quiet kicker. */
+  eyebrowKind?: 'pill' | 'kicker';
+  /**
+   * Coverage guarantee: sanitised HTML for source content the structured model did not capture
+   * (code blocks, tables, definition lists, quotes...). Appended after the pattern.
+   */
+  extra?: string[];
+  /** For article/documentation sections: the whole body as ordered sanitised blocks. */
+  flow?: string[];
 }
 
 export type Tone = 'plain' | 'surface' | 'inverse' | 'accent';
@@ -109,6 +127,8 @@ export interface Footer {
   legal?: string;
   social: NavLink[];
   rawHtml: string;
+  /** Sanitised footer content the structured model did not capture (addresses, registration lines...). */
+  extra?: string[];
 }
 
 export interface Page {
@@ -118,6 +138,7 @@ export interface Page {
   title: string;
   description?: string;
   lang?: string;
+  dir?: 'ltr' | 'rtl';
   nav: Nav;
   sections: Section[];
   footer: Footer;
@@ -142,6 +163,8 @@ export interface StyleSpec {
   space: { unit: number; sectionY: number; container: number; gutter: number };
   layout: { align: 'left' | 'center'; density: 'tight' | 'comfortable' | 'airy'; rhythm: 'uniform' | 'alternating' | 'varied'; heroPreference: PatternId[]; featurePreference: PatternId[] };
   motion: 'none' | 'minimal' | 'subtle';
+  /** 'auto' also ships a dark scheme (prefers-color-scheme: dark) derived from the palette and verified for contrast. */
+  darkMode?: 'off' | 'auto';
   imagery: 'duotone' | 'natural' | 'bordered' | 'grain';
 }
 
@@ -158,6 +181,12 @@ export interface DesignSignals {
   blurBlobs: number;
   hoverScale: number;
   fadeIn: number;
+  /** Elements using backdrop blur (glassmorphism) and translucent surfaces. */
+  backdropBlur: number;
+  translucent: number;
+  glowShadows: number;
+  /** Custom property names declared by the stylesheet (e.g. shadcn/ui theme tokens). */
+  customProps: string[];
 }
 
 export interface Behavior { scripts: Page["scripts"]; note: string; legacyCss?: string }
@@ -197,6 +226,8 @@ export interface SiteIR {
   signals: DesignSignals;
   behavior: Behavior;
   redirects: Redirect[];
+  /** Source files Morpheus could not analyse safely; they are copied through unchanged. */
+  passthrough: string[];
   changeLog: Change[];
   warnings: string[];
 }

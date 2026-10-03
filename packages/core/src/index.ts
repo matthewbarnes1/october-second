@@ -12,3 +12,5 @@ export * from './consultant/apply';
 export * from './consultant/plan';
 export { EMOJI_RE, itemsAreUniform } from './analyze/util';
 export * from './style/verify';
+export * from './style/sanitize';
+export * from './consultant/validate';

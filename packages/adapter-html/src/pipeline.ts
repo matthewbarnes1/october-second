@@ -24,6 +24,8 @@ export function resolveStyle(choice: StyleChoice): { style: StyleSpec; notes: st
 
 export interface RunOptions extends StyleChoice {
   depth: Depth;
+  /** Also ship a dark colour scheme. */
+  dark?: boolean;
   excluded?: string[];
   manual?: Operation[];
 }
@@ -44,7 +46,8 @@ export async function loadSite(input: string | VFS | Record<string, string>) {
 }
 
 export function runRedesign(source: SiteIR, opts: RunOptions): RunResult {
-  const { style, notes } = resolveStyle(opts);
+  const { style: resolved, notes } = resolveStyle(opts);
+  const style = opts.dark ? { ...resolved, darkMode: 'auto' as const } : resolved;
   const plan = planRedesign(source, { depth: opts.depth, style, brief: opts.brief, excluded: opts.excluded, manual: opts.manual });
   const output = refreshSignals(applyPlan(source, plan));
   return { source, plan, output, before: analyze(source), after: analyze(output), styleNotes: notes, contrast: verifyStyle(style) };

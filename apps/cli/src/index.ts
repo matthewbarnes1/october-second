@@ -23,6 +23,9 @@ ${c.bold('Options')}
   --depth <level>     polish | restructure | redesign   (default: restructure)
   --out <dir>         output folder for redesign (default: <path>.morpheus)
   --json              machine-readable output
+  --tells <file>      load an extra AI-tell pack (JSON) for scan/audit/plan/redesign
+  --no-web-fonts      do not link Google Fonts (privacy, speed); use system font stacks
+  --dark              also ship a dark colour scheme (prefers-color-scheme)
 `;
 
 function parse(argv: string[]) {
@@ -60,6 +63,14 @@ async function main() {
   const dir = path.resolve(target);
   try { await fs.access(dir); } catch { console.error(`Not found: ${dir}`); process.exit(1); }
 
+  if (typeof flags.tells === 'string') {
+    const { loadTellPack } = await import('@morpheus/core');
+    let pack: unknown;
+    try { pack = JSON.parse(await fs.readFile(path.resolve(flags.tells), 'utf8')); } catch (e: any) { console.error(`Could not read tell pack: ${e.message}`); process.exit(1); }
+    const r = loadTellPack(pack);
+    r.errors.forEach((e) => console.error(c.yellow('tell pack: ' + e)));
+    console.error(c.dim(`Loaded ${r.added} extra tell(s) from ${flags.tells}`));
+  }
   const depth = (String(flags.depth ?? 'restructure')) as Depth;
   if (!['polish', 'restructure', 'redesign'].includes(depth)) { console.error('--depth must be polish, restructure or redesign'); process.exit(1); }
 
@@ -84,12 +95,12 @@ async function main() {
       process.exit(2);
     }
     const { ir } = await loadSite(dir);
-    const res = runRedesign(ir, { depth, preset: typeof flags.style === 'string' ? flags.style : flags.brief ? undefined : 'editorial', brief: typeof flags.brief === 'string' ? flags.brief : undefined });
+    const res = runRedesign(ir, { depth, preset: typeof flags.style === 'string' ? flags.style : flags.brief ? undefined : 'editorial', brief: typeof flags.brief === 'string' ? flags.brief : undefined, dark: !!flags.dark });
     if (flags.json) { console.log(JSON.stringify({ profile: res.plan.profile, ops: res.plan.ops.map((o) => o.change), before: { ai: res.before.ai.score, ux: res.before.ux.score }, after: { ai: res.after.ai.score, ux: res.after.ux.score } }, null, 2)); return; }
     console.log(report(res, cmd === 'plan'));
     if (cmd === 'redesign') {
       const out = path.resolve(typeof flags.out === 'string' ? flags.out : `${dir.replace(/\/$/, '')}.morpheus`);
-      const written = await writeSite(res.output, out, { sourceDir: dir });
+      const written = await writeSite(res.output, out, { sourceDir: dir, webFonts: !flags['no-web-fonts'] });
       await fs.writeFile(path.join(out, 'MORPHEUS-REPORT.md'), report(res, false, true), 'utf8');
       await fs.writeFile(path.join(out, 'morpheus-changes.json'), JSON.stringify(res.plan.ops.map((o) => o.change), null, 2));
       console.log(`\n${c.green('Wrote')} ${written.length} files to ${c.bold(out)}`);

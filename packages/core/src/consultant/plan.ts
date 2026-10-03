@@ -4,6 +4,7 @@ import { analyze } from '../analyze';
 import { discover, type Goal, type ProjectProfile } from './discover';
 import { applyOp, isBadgeLike, navScore, sectionLabel, shortLabel, type Operation } from './apply';
 import { choosePattern, chooseChrome, PATTERN_BY_ID } from './patterns';
+import { sanitizeStyle } from '../style/sanitize';
 
 export type Depth = 'polish' | 'restructure' | 'redesign';
 
@@ -45,7 +46,8 @@ function mk(id: string, op: Operation['type'], change: Omit<Change, 'id' | 'op'>
 }
 
 export function planRedesign(source: SiteIR, options: PlanOptions): RedesignPlan {
-  const { depth, style } = options;
+  const { depth } = options;
+  const style = sanitizeStyle(options.style);
   const profile = discover(source, options.brief);
   const work = clone(source);
   work.changeLog = [];
@@ -81,16 +83,21 @@ export function planRedesign(source: SiteIR, options: PlanOptions): RedesignPlan
       if (src) meta.description = src.length > 155 ? src.slice(0, 152).replace(/\s+\S*$/, '') + '…' : src;
     }
     const brandName = page.nav.brand.text ?? work.name;
-    if ((!page.title || page.title.length < 8 || page.title.trim() === brandName) && hero?.content.heading) {
+    const latin = /^[\x00-\u024f\s\p{P}]*$/u.test(page.title);
+    const thinTitle = !page.title || (latin ? page.title.length < 8 || page.title.trim() === brandName : page.title.length < 2);
+    if (thinTitle && hero?.content.heading) {
       const t = `${brandName}: ${hero.content.heading}`;
       meta.title = t.length > 62 ? t.slice(0, 59).replace(/\s+\S*$/, '') + '…' : t;
     }
     const params: Record<string, any> = { ...meta };
+    if (!page.headExtras.some((h) => /og:title/i.test(h))) {
+      params.og = { title: meta.title ?? (page.title || `${brandName}`), description: meta.description ?? page.description ?? hero?.content.sub?.slice(0, 155) ?? '' };
+    }
     if (!page.headExtras.some((h) => /viewport/i.test(h))) params.viewport = true;
     if (Object.keys(params).length) {
       emit(mk(pid('fix-meta'), 'fix-meta', {
         target: route, category: 'content', impact: params.viewport ? 'high' : 'low',
-        rationale: [params.viewport ? 'Added the responsive viewport tag (without it phones render a shrunken desktop layout)' : '', meta.lang ? 'declared the page language (assumed English; change if wrong)' : '', meta.description ? 'wrote a meta description from the hero text' : '', meta.title ? `replaced the thin page title with "${meta.title}"` : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) + '.',
+        rationale: [params.viewport ? 'Added the responsive viewport tag (without it phones render a shrunken desktop layout)' : '', meta.lang ? 'declared the page language (assumed English; change if wrong)' : '', meta.description ? 'wrote a meta description from the hero text' : '', meta.title ? `replaced the thin page title with "${meta.title}"` : '', params.og ? 'added Open Graph and Twitter card tags so links preview properly when shared' : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) + '.',
       }, { page: route, params }));
     }
     if (page.sections.some((s) => s.content.form?.fields.some((f) => !f.label && f.type !== 'checkbox'))) {
@@ -117,12 +124,14 @@ export function planRedesign(source: SiteIR, options: PlanOptions): RedesignPlan
     }
 
     for (const s of page.sections) {
-      if (s.intent === 'hero' && isBadgeLike(s.content.eyebrow)) {
+      const eb = s.content.eyebrow;
+      if (eb && (s.content.eyebrowKind === 'pill' || (s.intent === 'hero' && isBadgeLike(eb)))) {
+        const cleaned = eb.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+|[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/gu, '').trim() || eb;
         emit(mk(sid('strip-badge', s.id), 'strip-badge', {
           target: `${route} ${sectionLabel(s)}`, category: 'content', impact: 'medium',
-          rationale: `Removed the pill badge "${s.content.eyebrow}" above the headline: it is a stock template device and competes with the headline. Announcements belong in a quieter place.`,
-          before: s.content.eyebrow,
-        }, { page: route, section: s.id }));
+          rationale: `Turned the pill badge "${eb}" into a quiet kicker line above the headline and removed decorative emoji. The wording is unchanged; the pill is a stock template device that competes with the headline.`,
+          before: eb, after: cleaned,
+        }, { page: route, section: s.id, params: { text: cleaned } }));
       }
     }
 

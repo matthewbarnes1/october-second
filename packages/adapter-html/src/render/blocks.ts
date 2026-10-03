@@ -15,11 +15,36 @@ export function ctas(list: Cta[]): string {
   return `<div class="m-actions">${list.map((c) => btn(c)).join('')}</div>`;
 }
 
+/** Render-scoped state: the first image in the hero/first section is the likely LCP element, so it loads eagerly. */
+export const renderState = { priority: 0 };
+
 export function media(m: Media | undefined, cls = 'm-media'): string {
   if (!m) return '';
-  if (m.kind === 'image') return `<img class="${cls} m-img" src="${esc(m.src)}" alt="${esc(m.alt ?? '')}" loading="lazy">`;
+  if (m.kind === 'image') {
+    const hi = renderState.priority > 0;
+    if (hi) renderState.priority -= 1;
+    const a = [
+      m.src ? ` src="${esc(m.src)}"` : '',
+      m.srcset ? ` srcset="${esc(m.srcset)}"` : '',
+      m.sizes ? ` sizes="${esc(m.sizes)}"` : '',
+      m.width && /^\d+$/.test(m.width) ? ` width="${m.width}"` : '',
+      m.height && /^\d+$/.test(m.height) ? ` height="${m.height}"` : '',
+      ` alt="${esc(m.alt ?? '')}"`,
+      hi ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"',
+    ].join('');
+    const img = `<img class="${cls} m-img"${a}>`;
+    if (m.sources?.length) {
+      return `<picture>${m.sources.map((x) => `<source${x.media ? ` media="${esc(x.media)}"` : ''}${x.type ? ` type="${esc(x.type)}"` : ''}${x.sizes ? ` sizes="${esc(x.sizes)}"` : ''} srcset="${esc(x.srcset)}">`).join('')}${img}</picture>`;
+    }
+    return img;
+  }
   if (m.kind === 'svg') return `<div class="${cls} m-svg">${m.html ?? ''}</div>`;
   return `<div class="${cls} m-embed">${m.html ?? ''}</div>`;
+}
+
+/** Source content the structured model did not capture, carried through sanitised. */
+export function extra(list: string[] | undefined): string {
+  return list?.length ? `<div class="m-container"><div class="m-prose m-extra">${list.join('\n')}</div></div>` : '';
 }
 
 export function headBlock(s: Section, opts: { level?: number; withSub?: boolean; cls?: string } = {}): string {
@@ -27,7 +52,7 @@ export function headBlock(s: Section, opts: { level?: number; withSub?: boolean;
   const level = Math.min(Math.max(c.headingLevel ?? 2, 1), 3);
   const parts: string[] = [];
   if (c.eyebrow) parts.push(`<p class="m-eyebrow">${esc(c.eyebrow)}</p>`);
-  if (c.heading) parts.push(`<h${level} class="m-h m-h${level}">${esc(c.heading)}</h${level}>`);
+  if (c.heading) parts.push(`<h${level} class="m-h m-h${level}" id="h-${esc(s.id)}">${esc(c.heading)}</h${level}>`);
   if (c.sub && opts.withSub !== false) parts.push(`<p class="m-sub">${esc(c.sub)}</p>`);
   return parts.length ? `<div class="m-head${opts.cls ? ' ' + opts.cls : ''}">${parts.join('')}</div>` : '';
 }
@@ -63,20 +88,35 @@ export function attachments(s: Section): string {
 export function form(f: FormModel | undefined, id: string): string {
   if (!f) return '';
   const field = (x: FormModel['fields'][number], i: number) => {
-    const fid = `${id}-${x.name ?? i}`;
+    const fid = `${id}-${x.name ?? i}-${i}`;
     const label = x.label ?? x.placeholder ?? x.name ?? '';
     const req = x.required ? ' required' : '';
     const nm = x.name ? ` name="${esc(x.name)}"` : '';
+    const val = x.value !== undefined && (x.type === 'radio' || x.type === 'checkbox') ? ` value="${esc(x.value)}"` : '';
     let control: string;
     if (x.type === 'textarea') control = `<textarea id="${fid}"${nm} rows="5"${req}></textarea>`;
-    else if (x.type === 'select') control = `<select id="${fid}"${nm}${req}>${(x.options ?? []).map((o) => `<option>${esc(o)}</option>`).join('')}</select>`;
-    else if (x.type === 'checkbox' || x.type === 'radio') return `<label class="m-check"><input type="${x.type}" id="${fid}"${nm}${req}> <span>${esc(label)}</span></label>`;
+    else if (x.type === 'select') control = `<select id="${fid}"${nm}${req}>${x.optionGroups?.length ? x.optionGroups.map((g) => (g.label ? `<optgroup label="${esc(g.label)}">${g.options.map((o) => `<option>${esc(o)}</option>`).join('')}</optgroup>` : g.options.map((o) => `<option>${esc(o)}</option>`).join(''))).join('') : (x.options ?? []).map((o) => `<option>${esc(o)}</option>`).join('')}</select>`;
+    else if (x.type === 'checkbox' || x.type === 'radio') return `<label class="m-check"><input type="${x.type}" id="${fid}"${nm}${val}${req}> <span>${esc(label)}</span></label>`;
     else control = `<input id="${fid}" type="${esc(x.type)}"${nm}${req}>`;
     return `<div class="m-field"><label for="${fid}">${esc(label)}${x.required ? '' : ' <span class="m-opt">(optional)</span>'}</label>${control}</div>`;
   };
-  const main = f.fields.filter((x) => x.group !== 'optional').map(field).join('');
+  // Consecutive fields with the same fieldset legend are grouped back into a <fieldset>.
+  const groups = (fields: FormModel['fields'], offset: number) => {
+    const out: string[] = [];
+    let i = 0;
+    while (i < fields.length) {
+      const legend = fields[i].fieldset;
+      let j = i;
+      const chunk: string[] = [];
+      while (j < fields.length && fields[j].fieldset === legend) { chunk.push(field(fields[j], offset + j)); j++; }
+      out.push(legend ? `<fieldset class="m-fieldset"><legend>${esc(legend)}</legend>${chunk.join('')}</fieldset>` : chunk.join(''));
+      i = j;
+    }
+    return out.join('');
+  };
+  const main = groups(f.fields.filter((x) => x.group !== 'optional'), 0);
   const more = f.fields.filter((x) => x.group === 'optional');
-  const moreHtml = more.length ? `<details class="m-more"><summary>More details (optional)</summary>${more.map((x, i) => field(x, i + 100)).join('')}</details>` : '';
+  const moreHtml = more.length ? `<details class="m-more"><summary>More details (optional)</summary>${groups(more, 1000)}</details>` : '';
   const action = f.action ? ` action="${esc(f.action)}"` : '';
   const method = f.method ? ` method="${esc(f.method)}"` : '';
   return `<form class="m-form"${action}${method}>${main}${moreHtml}<button class="m-btn m-btn-primary" type="submit">${esc(f.submitText)}</button></form>`;

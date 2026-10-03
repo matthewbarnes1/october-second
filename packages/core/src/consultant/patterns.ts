@@ -69,6 +69,12 @@ export function choosePattern(section: Section, ctx: { page: Page; style: StyleS
   const c = section.content;
   const n = c.items.length;
   const hasVisual = c.media.length > 0 || section.attachments.length > 0 || !!(c.stats && c.stats.length);
+  if (c.flow?.length) {
+    const words = c.flow.join(' ').replace(/<[^>]+>/g, ' ').split(/\s+/).length;
+    return words > 220 && c.heading
+      ? { pattern: 'content-two-column', why: 'A long article reads better with its heading set beside the text than stacked above a full-width block.' }
+      : { pattern: 'content-prose', why: 'Article and documentation text keeps its natural reading order in a comfortable measure.' };
+  }
 
   switch (section.intent) {
     case 'hero': {

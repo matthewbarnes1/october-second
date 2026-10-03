@@ -15,5 +15,5 @@
       "@morpheus/adapter-html": ["./packages/adapter-html/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "apps/*/src", "tests"]
+  "include": ["packages/*/src", "apps/*/src", "tests", "scripts"]
 }

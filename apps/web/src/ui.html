@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Morpheus</title>
-<style>
+<style nonce="__NONCE__">
 :root{--bg:#f4f3ef;--panel:#fbfaf7;--ink:#1b1a17;--mute:#6c685f;--line:#dedbd2;--acc:#2b4cff;--acc-ink:#fff;--ok:#1f7a4d;--warn:#b26a00;--bad:#b3261e;--r:10px}
 @media (prefers-color-scheme:dark){:root{--bg:#121211;--panel:#1b1a18;--ink:#eeece6;--mute:#9b978c;--line:#2e2c28;--acc:#6f8bff;--acc-ink:#0b0e1a;--ok:#5dc690;--warn:#e2a24a;--bad:#ff8a80}}
 *{box-sizing:border-box}
@@ -112,6 +112,8 @@ iframe{border:1px solid var(--line);border-radius:8px;background:#fff;height:100
       <div class="row">Section gap<input type="range" id="r-space" min="40" max="180" step="4" data-var="--m-section-y" data-unit="px" data-path="space.sectionY"></div>
       <div class="row">Width<input type="range" id="r-width" min="880" max="1400" step="20" data-var="--m-container" data-unit="px" data-path="space.container"></div>
       <div class="row">Type scale<input type="range" id="r-scale" min="1.1" max="1.6" step="0.025" data-path="type.scale"></div>
+      <label class="row" style="grid-template-columns:20px 1fr"><input type="checkbox" id="opt-dark"><span>Also ship a dark colour scheme (follows the visitor's system setting)</span></label>
+      <label class="row" style="grid-template-columns:20px 1fr"><input type="checkbox" id="opt-nofonts"><span>Do not load hosted web fonts (privacy and speed; uses system fonts)</span></label>
       <button class="btn" id="resetTune">Reset fine-tuning</button>
       <p class="hint" id="contrast"></p></div>
   </aside>
@@ -131,8 +133,10 @@ iframe{border:1px solid var(--line);border-radius:8px;background:#fff;height:100
   </aside>
 </main>
 <div class="toast" id="toast"></div>
-<script>
+<script nonce="__NONCE__">
 const ROOT = __ROOT__;
+const TOKEN = __TOKEN__;
+const PREVIEW = '__PREVIEW__';
 const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const FONTS = ['Fraunces','Source Serif 4','DM Serif Display','Newsreader','Cormorant Garamond','Libre Baskerville','Playfair Display','Space Grotesk','Manrope','DM Sans','Public Sans','Figtree','Instrument Sans','Bricolage Grotesque','Inter Tight','Geist','Jost','Source Sans 3','IBM Plex Mono','JetBrains Mono','Anton'];
@@ -141,7 +145,7 @@ const S = { meta: null, loaded: null, run: null, preset: 'editorial', brief: '',
 let runTimer = 0, scrollY = 0;
 
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
-async function api(path, body){ const r = await fetch(path, body ? {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)} : undefined); const j = await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j; }
+async function api(path, body){ const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'x-morpheus-token': TOKEN, ...(body ? {'content-type':'application/json'} : {}) }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j; }
 const setPath = (o, p, v) => { const k=p.split('.'); let c=o; k.slice(0,-1).forEach(x=>c=(c[x]??={})); c[k.at(-1)]=v; };
 const getPath = (o, p) => p.split('.').reduce((a,k)=>a?.[k], o);
 
@@ -171,7 +175,7 @@ async function run(){
   if(!S.loaded) return;
   document.body.classList.add('busy');
   try {
-    S.run = await api('/api/run', { preset: S.preset, brief: S.brief, depth: S.depth, excluded: [...S.excluded], manual: [...S.manual.values()], overrides: S.overrides });
+    S.run = await api('/api/run', { preset: S.preset, brief: S.brief, depth: S.depth, excluded: [...S.excluded], manual: [...S.manual.values()], overrides: S.overrides, dark: $('#opt-dark').checked, webFonts: !$('#opt-nofonts').checked });
     syncControls(); renderAll();
   } catch(e){ toast(e.message); } finally { document.body.classList.remove('busy'); }
   $('#export').disabled = !S.run;
@@ -205,15 +209,16 @@ function renderPages(){
   sel.value = S.file;
 }
 
-function frameUrl(){ return `/preview/${encodeURI(S.file)}?mode=${S.mode}${S.mode==='after'?'&edit=1':''}&t=${Date.now()}`; }
+function frameUrl(){ return `${PREVIEW}/preview/${encodeURI(S.file)}?mode=${S.mode}${S.mode==='after'?'&edit=1':''}&t=${Date.now()}`; }
 function renderFrame(){
   const fw = $('#fw');
   let f = $('#frame');
-  if(!f){ fw.innerHTML = '<iframe id="frame" title="Preview"></iframe>'; f = $('#frame'); f.addEventListener('load', () => { try{ f.contentWindow.scrollTo(0, scrollY); }catch{} if(S.selected) f.contentWindow.postMessage({type:'m-select',id:S.selected.id},'*'); }); }
+  if(!f){ fw.innerHTML = '<iframe id="frame" title="Preview" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>'; f = $('#frame'); f.addEventListener('load', () => { try{ f.contentWindow.scrollTo(0, scrollY); }catch{} if(S.selected) f.contentWindow.postMessage({type:'m-select',id:S.selected.id},PREVIEW); }); }
   try { scrollY = f.contentWindow.scrollY || 0; } catch { scrollY = 0; }
   f.style.maxWidth = S.device;
   f.src = frameUrl();
-  $('#open').href = `/preview/${encodeURI(S.file)}?mode=${S.mode}`;
+  $('#open').href = `${PREVIEW}/preview/${encodeURI(S.file)}?mode=${S.mode}`;
+  $('#open').rel = 'noopener noreferrer';
 }
 
 function renderChanges(){
@@ -282,9 +287,10 @@ $('#tab-changes').addEventListener('click', e => {
   const row = e.target.closest('.chg'); if(!row) return;
   const id = row.dataset.id;
   if (e.target.matches('input[type=checkbox]')) { e.target.checked ? S.excluded.delete(id) : S.excluded.add(id); schedule(40); return; }
-  if (row.dataset.sec) { S.selected = { id: row.dataset.sec }; $('#frame')?.contentWindow.postMessage({type:'m-select', id: row.dataset.sec}, '*'); }
+  if (row.dataset.sec) { S.selected = { id: row.dataset.sec }; $('#frame')?.contentWindow.postMessage({type:'m-select', id: row.dataset.sec}, PREVIEW); }
 });
 window.addEventListener('message', e => {
+  if (e.origin !== PREVIEW || e.source !== $('#frame')?.contentWindow) return;
   const d = e.data || {};
   if (d.type === 'm-select') { S.selected = { id: d.id }; showTab('section'); renderSection(); }
 });
@@ -292,7 +298,7 @@ window.addEventListener('message', e => {
 document.querySelector('.left').addEventListener('input', e => {
   const el = e.target; if (!el.dataset.var) return;
   const val = el.value + (el.dataset.unit || '');
-  $('#frame')?.contentWindow.postMessage({ type:'m-vars', vars: { [el.dataset.var]: val } }, '*');
+  $('#frame')?.contentWindow.postMessage({ type:'m-vars', vars: { [el.dataset.var]: val } }, PREVIEW);
 });
 document.querySelector('.left').addEventListener('change', e => {
   const el = e.target; if (!el.dataset.path) return;
@@ -300,6 +306,8 @@ document.querySelector('.left').addEventListener('change', e => {
   setPath(S.overrides, el.dataset.path, v); schedule(30);
 });
 $('#resetTune').onclick = () => { S.overrides = {}; run(); };
+$('#opt-dark').addEventListener('change', () => run());
+$('#opt-nofonts').addEventListener('change', () => run());
 $('#export').onclick = async () => {
   const out = prompt('Export to folder:', (S.loaded.dir + '.morpheus'));
   if (!out) return;

@@ -5,7 +5,7 @@ import { extractColors, parseColor, toHex } from './color';
 const TAILWIND_RE = /^(?:sm:|md:|lg:|xl:|hover:|focus:|dark:)*(?:flex|grid|p[xytblr]?-\d|m[xytblr]?-\d|text-(?:xs|sm|base|lg|xl|\dxl)|bg-|rounded|shadow|gap-|space-[xy]-|w-|h-|max-w-|font-(?:bold|semibold|medium))/;
 
 export function emptySignals(): DesignSignals {
-  return { gradients: [], fonts: [], radii: [], shadows: [], colors: [], animations: [], classNames: [], usesTailwind: false, gradientText: false, blurBlobs: 0, hoverScale: 0, fadeIn: 0 };
+  return { gradients: [], fonts: [], radii: [], shadows: [], colors: [], animations: [], classNames: [], usesTailwind: false, gradientText: false, blurBlobs: 0, hoverScale: 0, fadeIn: 0, backdropBlur: 0, translucent: 0, glowShadows: 0, customProps: [] };
 }
 
 export function extractSignals(css: string, classNames: string[]): DesignSignals {
@@ -31,7 +31,13 @@ export function extractSignals(css: string, classNames: string[]): DesignSignals
         const px = val.match(/([\d.]+)(px|rem)/);
         if (px) s.radii.push(Math.round(parseFloat(px[1]) * (px[2] === 'rem' ? 16 : 1)));
       }
-      if (prop === 'box-shadow' && val !== 'none') s.shadows.push(val.trim());
+      if (prop.startsWith('--')) s.customProps.push(prop);
+      if (prop === 'box-shadow' && val !== 'none') {
+        s.shadows.push(val.trim());
+        if (/\d+px\s+\d+px\s+(?:[3-9]\d|\d{3})px[^,;]*rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0?\.[2-9]/i.test(val) && /rgba?\(\s*(?!0\s*,\s*0\s*,\s*0)/i.test(val)) s.glowShadows += 1;
+      }
+      if (prop === 'backdrop-filter' || prop === '-webkit-backdrop-filter') { if (/blur\(/.test(val)) s.backdropBlur += 1; }
+      if ((prop === 'background' || prop === 'background-color') && /rgba\([^)]*,\s*0?\.\d+\s*\)/i.test(val) && !/gradient/.test(val)) s.translucent += 1;
       if (prop === 'animation' || prop === 'animation-name') s.animations.push(val.trim());
       if (prop === 'filter' || prop === 'backdrop-filter') {
         const m = val.match(/blur\(([\d.]+)px\)/);
@@ -49,6 +55,7 @@ export function extractSignals(css: string, classNames: string[]): DesignSignals
   for (const g of s.gradients) for (const c of extractColors(g)) colorSet.add(toHex(c));
   s.colors = [...colorSet];
 
+  s.customProps = [...new Set(s.customProps)];
   s.classNames = classNames;
   const tw = classNames.filter((c) => TAILWIND_RE.test(c));
   s.usesTailwind = tw.length >= 8;
@@ -56,6 +63,9 @@ export function extractSignals(css: string, classNames: string[]): DesignSignals
     if (/bg-clip-text|text-transparent/.test(c)) s.gradientText = true;
     if (/(^|:)(blur-(3xl|2xl)|blur-\[)/.test(c)) s.blurBlobs += 1;
     if (/hover:scale-/.test(c)) s.hoverScale += 1;
+    if (/(^|:)backdrop-blur/.test(c)) s.backdropBlur += 1;
+    if (/^(bg|border|ring)-(white|black|slate-\d+|zinc-\d+|gray-\d+|neutral-\d+)\/\d+$/.test(c)) s.translucent += 1;
+    if (/^(shadow|drop-shadow)-(\[0_0_|(violet|purple|indigo|fuchsia|blue|pink|cyan|sky|emerald)-\d+\/\d+)/.test(c)) s.glowShadows += 1;
     if (/^animate-(fade|slide|bounce|pulse)|^aos|data-aos|fade-up|fade-in|animate-in/.test(c)) s.fadeIn += 1;
     const g = c.match(/^(?:from|via|to)-([a-z]+)-(\d+)$/);
     if (g) s.gradients.push(`tailwind:${c}`);

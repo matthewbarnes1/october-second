@@ -46,14 +46,18 @@ pnpm morpheus styles                               # presets
 pnpm morpheus plan fixtures/ai-saas --style swiss --depth redesign
 pnpm morpheus redesign fixtures/ai-saas --brief "calm, warm, handmade, serif headlines" --out out/
 pnpm web                                           # live editor at http://127.0.0.1:4173
-pnpm test
+pnpm test                                          # 118 tests incl. security, accessibility, content-preservation
+pnpm audit:a11y                                    # axe-core across every style and site
 ```
+
+Options worth knowing: `--dark` (also ship a verified dark scheme), `--no-web-fonts` (no Google Fonts; privacy and speed), `--tells pack.json` (extend the AI-tell checklist without a code release).
 
 `fixtures/ai-saas` is a deliberately generic AI-built landing page (purple gradients, emoji cards, centered hero with a badge, nine nav items). On it, a full redesign takes the AI-look score from 100 to about 19 and UX health from 37 to 100, and every change comes with a reason.
 
 ## What exists today
 
-- **Core engine** (`packages/core`): Site IR, stack detector (JS frameworks, PHP/Laravel/WordPress, Rails/Jekyll, Django/Flask, Hugo, Flutter and more), AI-tell detector (19 rules, weighted), UX audit (26 checks), project discovery (industry, goal, audience), a pattern library with 37 layouts, the consultant planner (reorder, merge, restructure, navigation regrouping, page extraction, form simplification, accessibility fixes), 9 style presets verified for WCAG contrast, and a free-text style brief interpreter.
+- **Audited**: see [docs/AUDIT.md](docs/AUDIT.md) for what was tested, what it found and fixed, and what is still not covered.
+- **Core engine** (`packages/core`): Site IR, stack detector (JS frameworks, PHP/Laravel/WordPress, Rails/Jekyll, Django/Flask, Hugo, Flutter and more), AI-tell detector (27 weighted rules, versioned, extensible with JSON tell packs), UX audit (26 checks), project discovery (industry, goal, audience), a pattern library with 37 layouts, the consultant planner (reorder, merge, restructure, navigation regrouping, page extraction, form simplification, accessibility fixes), 9 style presets verified for WCAG contrast, and a free-text style brief interpreter.
 - **HTML adapter** (`packages/adapter-html`): reads static HTML/CSS sites into the IR and writes a rebuilt site with a token-driven stylesheet. Content is never rewritten; sections it cannot model are kept as original markup.
 - **CLI** (`apps/cli`): `scan`, `audit`, `styles`, `plan`, `redesign`, `serve`.
 - **Web editor** (`apps/web`): before/after preview, device widths, style presets and brief, live fine-tuning (colours, fonts, corners, spacing, width, type scale), per-change accept/reject, click-a-section inspector (layout, background, alignment, reorder), audit panel, export.

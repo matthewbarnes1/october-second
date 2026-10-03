@@ -5,6 +5,7 @@ type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? (T[K] extends any
 export function deepMerge<T>(base: T, patch: DeepPartial<T>): T {
   const out: any = Array.isArray(base) ? [...(base as any)] : { ...(base as any) };
   for (const [k, v] of Object.entries(patch as any)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     if (v && typeof v === 'object' && !Array.isArray(v) && typeof out[k] === 'object' && out[k] !== null) {
       out[k] = deepMerge(out[k], v as any);
     } else if (v !== undefined) {

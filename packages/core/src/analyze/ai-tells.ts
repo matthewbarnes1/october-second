@@ -13,6 +13,7 @@ export interface TellResult {
 }
 
 export interface AiLookReport {
+  version: string;
   score: number;             // 0-100, higher = more AI-looking
   level: 'distinctive' | 'mixed' | 'generic' | 'strongly-generic';
   tells: TellResult[];
@@ -30,7 +31,27 @@ const GENERIC_NAMES = /\b(john doe|jane doe|jane smith|john smith|sarah johnson|
 const DEFAULT_ACCENTS = new Set(['#6366f1', '#8b5cf6', '#a855f7', '#4f46e5', '#7c3aed', '#3b82f6', '#2563eb', '#ec4899', '#06b6d4', '#667eea', '#764ba2', '#818cf8', '#c084fc']);
 const GENERIC_CTA = /^(get started( for free| now| today)?|learn more|start (your )?free trial|sign up (free|now|today)|book a demo|request a demo|try (it )?(for )?free)$/i;
 
-type Rule = Omit<TellResult, 'hit' | 'evidence'> & { test: (ir: SiteIR) => string[] | null };
+export type Rule = Omit<TellResult, 'hit' | 'evidence'> & { test: (ir: SiteIR) => string[] | null };
+
+/** Bump when the built-in rules change so reports can say which checklist they were scored against. */
+export const AI_TELLS_VERSION = '2026.10';
+
+const EXTRA: Rule[] = [];
+
+/** Add (or replace) a rule at runtime. Used by tell packs and by embedding applications. */
+export function registerTell(rule: Rule): void {
+  const i = EXTRA.findIndex((r) => r.id === rule.id);
+  if (i >= 0) EXTRA[i] = rule; else EXTRA.push(rule);
+}
+export function unregisterTell(id: string): boolean {
+  const i = EXTRA.findIndex((r) => r.id === id);
+  if (i < 0) return false;
+  EXTRA.splice(i, 1);
+  return true;
+}
+export function listTells(): { id: string; title: string; area: string; weight: number; builtin: boolean }[] {
+  return [...RULES.map((r) => ({ ...r, builtin: true })), ...EXTRA.map((r) => ({ ...r, builtin: false }))].map(({ id, title, area, weight, builtin }) => ({ id, title, area, weight, builtin }));
+}
 
 const RULES: Rule[] = [
   {
@@ -88,8 +109,8 @@ const RULES: Rule[] = [
       for (const { section: s } of allSections(ir)) {
         if (s.intent !== 'hero') continue;
         const c = s.content;
-        const score = Number(c.alignment === 'center') + Number(!!c.eyebrow) + Number(c.ctas.length >= 2);
-        if (score >= 2) return [`hero: ${c.alignment}-aligned${c.eyebrow ? `, badge "${c.eyebrow.slice(0, 40)}"` : ''}, ${c.ctas.length} CTAs`];
+        const score = Number(c.alignment === 'center') + Number(c.eyebrowKind === 'pill') + Number(c.ctas.length >= 2);
+        if (score >= 2) return [`hero: ${c.alignment}-aligned${c.eyebrowKind === 'pill' ? `, badge "${(c.eyebrow ?? '').slice(0, 40)}"` : ''}, ${c.ctas.length} CTAs`];
       }
       return null;
     },
@@ -153,7 +174,7 @@ const RULES: Rule[] = [
   {
     id: 'pill-badges', area: 'components', title: 'Pill badges ("New", "Now in beta", "✨ Introducing…")', weight: 4,
     test: (ir) => {
-      const ev = allSections(ir).filter(({ section: s }) => s.content.eyebrow && s.content.eyebrow.length < 60 && /new|beta|introducing|launch|v\d|announc|now|✨|🚀|trusted|#1|powered/i.test(s.content.eyebrow)).map(({ section: s }) => `"${s.content.eyebrow}"`);
+      const ev = allSections(ir).filter(({ section: s }) => s.content.eyebrow && s.content.eyebrowKind === 'pill' && s.content.eyebrow.length < 70).map(({ section: s }) => `"${s.content.eyebrow}"`);
       return ev.length ? ev.slice(0, 3) : null;
     },
   },
@@ -201,10 +222,82 @@ const RULES: Rule[] = [
     id: 'hover-scale-everywhere', area: 'motion', title: 'Hover scale on every card/button', weight: 3,
     test: (ir) => (ir.signals.hoverScale >= 2 ? [`${ir.signals.hoverScale} hover:scale rules`] : null),
   },
+  {
+    id: 'glassmorphism', area: 'components', title: 'Glassmorphism: blurred translucent panels and nav', weight: 6,
+    test: (ir) => (ir.signals.backdropBlur > 0 && ir.signals.translucent >= 2 ? [`${ir.signals.backdropBlur} backdrop-blur element(s), ${ir.signals.translucent} translucent surface(s)`] : null),
+  },
+  {
+    id: 'dark-slate-glow', area: 'color', title: 'Near-black slate base with a coloured glow', weight: 4,
+    test: (ir) => {
+      const dark = ir.signals.classNames.filter((c) => /^bg-(slate|zinc|gray|neutral|stone)-(900|950)$/.test(c));
+      const darkCss = ir.signals.colors.filter((c) => ['#020617', '#0f172a', '#09090b', '#0a0a0a', '#111827', '#030712', '#18181b', '#0b1020'].includes(c.toLowerCase()));
+      const glow = ir.signals.blurBlobs > 0 || ir.signals.glowShadows > 0 || ir.signals.gradients.some((g) => isPurpleish(extractColors(g)[0] ?? [0, 0, 0]) || /violet|purple|indigo|fuchsia/.test(g));
+      return (dark.length || darkCss.length) && glow ? [...dark.slice(0, 2), ...darkCss.slice(0, 2), 'with a purple/violet glow'] : null;
+    },
+  },
+  {
+    id: 'glow-shadows', area: 'components', title: 'Coloured neon-style glow shadows', weight: 3,
+    test: (ir) => (ir.signals.glowShadows > 0 ? [`${ir.signals.glowShadows} coloured glow shadow(s)`] : null),
+  },
+  {
+    id: 'icon-tiles', area: 'components', title: 'Identical stroke icons in tinted tiles above each card title', weight: 5,
+    test: (ir) => {
+      const ev: string[] = [];
+      for (const { section: s } of allSections(ir)) {
+        const svgs = s.content.items.filter((i) => i.iconKind === 'svg' || i.iconKind === 'image');
+        if (['features-grid', 'steps-columns'].includes(s.pattern) && svgs.length >= 3 && svgs.length === s.content.items.length) ev.push(`${svgs.length} icon-over-title cards in "${s.content.heading ?? s.intent}"`);
+      }
+      return ev.length ? ev.slice(0, 2) : null;
+    },
+  },
+  {
+    id: 'shadcn-default-theme', area: 'color', title: 'Untouched shadcn/ui theme tokens', weight: 4,
+    test: (ir) => {
+      const known = ['--background', '--foreground', '--primary', '--primary-foreground', '--muted', '--muted-foreground', '--card', '--border', '--ring', '--radius', '--accent', '--secondary'];
+      const hit = known.filter((k) => ir.signals.customProps.includes(k));
+      return hit.length >= 6 ? [`${hit.length} default token names (${hit.slice(0, 4).join(', ')}…)`] : null;
+    },
+  },
+  {
+    id: 'ai-copy-cadence', area: 'copy', title: 'Recognisable AI sentence patterns', weight: 7,
+    test: (ir) => {
+      const t = siteText(ir);
+      const families: [string, RegExp][] = [
+        ['"not just X, but Y"', /\bnot just\b[^.!?]{3,70}\b(but|it'?s)\b/i],
+        ['"it\'s not X, it\'s Y"', /\bit'?s not (about )?[^.!?—–]{2,40}[,—–-]\s*it'?s\b/i],
+        ['stock openers', /\b(say goodbye to|welcome to the future|the future of [\w ]{2,24} is here|in today'?s (fast-paced|digital|competitive|ever-changing)|whether you'?re an? [\w ]{2,24} or an?)\b/i],
+        ['clipped triad ("Fast. Simple. Secure.")', /(?:^|[.!?]\s)([A-Z][a-z]{2,10}\.\s){2}[A-Z][a-z]{2,10}\./],
+        ['"seamlessly integrates"', /\bseamlessly (integrat|connect|work|blend)/i],
+        ['"unlock(s) the power / potential"', /\bunlock(s|ing)? (the )?(power|potential|full|unprecedented|new)/i],
+        ['heavy em-dash use', /(?:—[^—]{5,}){4,}/],
+      ];
+      const hit = families.filter(([, re]) => re.test(t)).map(([n]) => n);
+      return hit.length >= 2 ? hit.slice(0, 4) : null;
+    },
+  },
+  {
+    id: 'stock-placeholder-images', area: 'imagery', title: 'Placeholder or random-stock image services', weight: 4,
+    test: (ir) => {
+      const srcs: string[] = [];
+      for (const { section: s } of allSections(ir)) {
+        for (const m of [...s.content.media, ...(s.content.logos ?? []), ...s.content.items.map((i) => i.image).filter(Boolean), ...s.content.items.map((i) => i.quote?.avatar).filter(Boolean)] as { src?: string }[]) if (m.src) srcs.push(m.src);
+      }
+      const bad = srcs.filter((u) => /(pravatar\.cc|randomuser\.me|picsum\.photos|placehold\.co|placeholder\.com|via\.placeholder|dummyimage|loremflickr|source\.unsplash\.com\/random|ui-avatars\.com)/i.test(u));
+      return bad.length ? bad.slice(0, 3) : null;
+    },
+  },
+  {
+    id: 'sparkle-emoji', area: 'copy', title: 'Sparkle emoji used to signal "AI"', weight: 2,
+    test: (ir) => {
+      const hit = allSections(ir).filter(({ section: s }) => /[✨⚡🚀🪄]/u.test([s.content.heading, s.content.eyebrow, ...s.content.ctas.map((c) => c.text)].join(' '))).map(({ section: s }) => s.content.heading ?? s.intent);
+      return hit.length ? hit.slice(0, 3) : null;
+    },
+  },
 ];
 
-export function scoreAiLook(ir: SiteIR): AiLookReport {
-  const tells: TellResult[] = RULES.map((r) => {
+export function scoreAiLook(ir: SiteIR, options: { extraRules?: Rule[] } = {}): AiLookReport {
+  const all = [...RULES.filter((r) => !EXTRA.some((e) => e.id === r.id)), ...EXTRA, ...(options.extraRules ?? [])];
+  const tells: TellResult[] = all.map((r) => {
     const ev = r.test(ir);
     return { id: r.id, area: r.area, title: r.title, weight: r.weight, hit: !!ev, evidence: ev ?? [] };
   });
@@ -212,7 +305,7 @@ export function scoreAiLook(ir: SiteIR): AiLookReport {
   const got = tells.filter((t) => t.hit).reduce((n, t) => n + t.weight, 0);
   const score = Math.min(100, Math.round((got / total) * 135));
   const level = score >= 65 ? 'strongly-generic' : score >= 40 ? 'generic' : score >= 20 ? 'mixed' : 'distinctive';
-  return { score, level, tells, hits: tells.filter((t) => t.hit).sort((a, b) => b.weight - a.weight) };
+  return { version: AI_TELLS_VERSION, score, level, tells, hits: tells.filter((t) => t.hit).sort((a, b) => b.weight - a.weight) };
 }
 
 void parseColor;

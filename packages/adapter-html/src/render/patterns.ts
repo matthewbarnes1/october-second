@@ -1,5 +1,5 @@
 import type { Item, PatternId, Section } from '@morpheus/core';
-import { attachments, btn, ctas, esc, form, headBlock, itemHref, marker, media, num, paragraphs } from './blocks';
+import { attachments, btn, ctas, esc, extra, form, headBlock, itemHref, marker, media, num, paragraphs, renderState } from './blocks';
 
 type R = (s: Section) => string;
 
@@ -18,16 +18,16 @@ const heroSplit: R = (s) => {
 };
 
 const heroEditorial: R = (s) =>
-  wrapTop(s, `<div class="m-hero m-hero-editorial"><div class="m-hero-main">${s.content.eyebrow ? `<p class="m-eyebrow">${esc(s.content.eyebrow)}</p>` : ''}${s.content.heading ? `<h1 class="m-h m-h1">${esc(s.content.heading)}</h1>` : ''}</div><div class="m-hero-aside">${s.content.sub ? `<p class="m-sub">${esc(s.content.sub)}</p>` : ''}${paragraphs(s.content.paragraphs)}${ctas(s.content.ctas)}</div>${s.content.media[0] ? `<div class="m-hero-wide">${media(s.content.media[0], 'm-hero-media')}</div>` : ''}${attachments(s)}</div>`);
+  wrapTop(s, `<div class="m-hero m-hero-editorial"><div class="m-hero-main">${s.content.eyebrow ? `<p class="m-eyebrow">${esc(s.content.eyebrow)}</p>` : ''}${s.content.heading ? `<h1 class="m-h m-h1" id="h-${esc(s.id)}">${esc(s.content.heading)}</h1>` : ''}</div><div class="m-hero-aside">${s.content.sub ? `<p class="m-sub">${esc(s.content.sub)}</p>` : ''}${paragraphs(s.content.paragraphs)}${ctas(s.content.ctas)}</div>${s.content.media[0] ? `<div class="m-hero-wide">${media(s.content.media[0], 'm-hero-media')}</div>` : ''}${attachments(s)}</div>`);
 
 const heroProof: R = (s) =>
   wrapTop(s, `<div class="m-hero m-hero-proof${s.content.media[0] ? '' : ' m-hero-solo'}"><div class="m-hero-text">${headBlock(s)}${ctas(s.content.ctas)}</div>${s.content.media[0] ? `<div class="m-hero-side">${media(s.content.media[0], 'm-hero-media')}</div>` : ''}<div class="m-hero-proofbar">${attachments(s)}</div></div>`);
 
 const heroStatement: R = (s) =>
-  wrapTop(s, `<div class="m-hero m-hero-statement">${s.content.eyebrow ? `<p class="m-eyebrow">${esc(s.content.eyebrow)}</p>` : ''}${s.content.heading ? `<h1 class="m-h m-h1">${esc(s.content.heading)}</h1>` : ''}<div class="m-hero-row">${s.content.sub ? `<p class="m-sub">${esc(s.content.sub)}</p>` : ''}${ctas(s.content.ctas)}</div>${attachments(s)}${s.content.media[0] ? media(s.content.media[0], 'm-hero-media') : ''}</div>`);
+  wrapTop(s, `<div class="m-hero m-hero-statement">${s.content.eyebrow ? `<p class="m-eyebrow">${esc(s.content.eyebrow)}</p>` : ''}${s.content.heading ? `<h1 class="m-h m-h1" id="h-${esc(s.id)}">${esc(s.content.heading)}</h1>` : ''}<div class="m-hero-row">${s.content.sub ? `<p class="m-sub">${esc(s.content.sub)}</p>` : ''}${ctas(s.content.ctas)}</div>${attachments(s)}${s.content.media[0] ? media(s.content.media[0], 'm-hero-media') : ''}</div>`);
 
 // ----------------------------------------------------------------------------- FEATURES
-const itemBody = (it: Item) => `${it.body ? `<p>${esc(it.body)}</p>` : ''}${it.bullets?.length ? `<ul class="m-bullets">${it.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}`;
+const itemBody = (it: Item) => `${it.body ? `<p>${esc(it.body)}</p>` : ''}${it.extra?.length ? `<div class="m-prose m-item-extra">${it.extra.join('')}</div>` : ''}${it.bullets?.length ? `<ul class="m-bullets">${it.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}`;
 const itemLink = (it: Item) => { const h = itemHref(it); return h ? `<a class="m-link" href="${esc(h)}">${it.cta ? esc(it.cta.text) : 'Read more'}</a>` : ''; };
 
 const featuresGrid: R = (s) =>
@@ -77,7 +77,7 @@ const pricingTable: R = (s) => {
   const feats: string[] = [];
   for (const t of tiers) for (const b of t.bullets ?? []) if (!feats.includes(b)) feats.push(b);
   const head = `<tr><th scope="col"><span class="m-sr">Feature</span></th>${tiers.map((t) => `<th scope="col"${t.highlighted ? ' class="m-hl"' : ''}>${esc(t.title)}${t.highlighted ? '<span class="m-flag">Recommended</span>' : ''}<span class="m-price">${esc(t.price)}</span></th>`).join('')}</tr>`;
-  const rows = feats.map((f) => `<tr><th scope="row">${esc(f)}</th>${tiers.map((t) => `<td${t.highlighted ? ' class="m-hl"' : ''}>${(t.bullets ?? []).includes(f) ? '<span class="m-yes" aria-label="Included">●</span>' : '<span class="m-no" aria-label="Not included">–</span>'}</td>`).join('')}</tr>`).join('');
+  const rows = feats.map((f) => `<tr><th scope="row">${esc(f)}</th>${tiers.map((t) => `<td${t.highlighted ? ' class="m-hl"' : ''}>${(t.bullets ?? []).includes(f) ? '<span class="m-yes" aria-hidden="true">●</span><span class="m-sr">Included</span>' : '<span class="m-no" aria-hidden="true">–</span><span class="m-sr">Not included</span>'}</td>`).join('')}</tr>`).join('');
   const foot = `<tr><td></td>${tiers.map((t) => `<td${t.highlighted ? ' class="m-hl"' : ''}>${priceCta(t)}</td>`).join('')}</tr>`;
   return wrapTop(s, `${headBlock(s)}<div class="m-table-wrap"><table class="m-table"><thead>${head}</thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table></div>`);
 };
@@ -107,7 +107,7 @@ const galleryMasonry: R = (s) => wrapTop(s, `${headBlock(s)}<div class="m-galler
 const teamGrid: R = (s) => wrapTop(s, `${headBlock(s)}<div class="m-team">${s.content.items.map((it) => `<article>${it.image ? media(it.image, 'm-portrait') : ''}<h3 class="m-h m-h4">${esc(it.title)}</h3>${it.body ? `<p>${esc(it.body)}</p>` : ''}</article>`).join('')}</div>`);
 const teamList: R = (s) => wrapTop(s, `<div class="m-split">${headBlock(s, { cls: 'm-sticky' })}<ul class="m-ruled">${s.content.items.map((it) => `<li><strong>${esc(it.title)}</strong><span>${esc(it.body)}</span></li>`).join('')}</ul></div>`);
 
-const prose = (s: Section) => `${paragraphs(s.content.paragraphs)}${s.content.media.map((m) => media(m)).join('')}${s.content.items.length ? `<div class="m-grid m-grid-2">${s.content.items.map((it) => `<div>${it.title ? `<h3 class="m-h m-h3">${esc(it.title)}</h3>` : ''}${itemBody(it)}</div>`).join('')}</div>` : ''}${form(s.content.form, s.id)}${ctas(s.content.ctas)}`;
+const prose = (s: Section) => `${s.content.flow?.length ? s.content.flow.join('\n') : ''}${paragraphs(s.content.paragraphs)}${s.content.media.map((m) => media(m)).join('')}${s.content.items.length ? `<div class="m-grid m-grid-2">${s.content.items.map((it) => `<div>${it.title ? `<h3 class="m-h m-h3">${esc(it.title)}</h3>` : ''}${itemBody(it)}</div>`).join('')}</div>` : ''}${form(s.content.form, s.id)}${ctas(s.content.ctas)}`;
 const contentProse: R = (s) => wrapTop(s, `<div class="m-narrow">${headBlock(s)}<div class="m-prose">${prose(s)}</div></div>`);
 const contentTwoCol: R = (s) => wrapTop(s, `<div class="m-split">${headBlock(s, { cls: 'm-sticky' })}<div class="m-prose">${prose(s)}</div></div>`);
 
@@ -140,16 +140,66 @@ function safePattern(s: Section): PatternId {
   return p;
 }
 
+/**
+ * Render-time completeness guarantee. Whatever pattern is chosen (by the planner, the editor or a saved plan),
+ * every part of the section's content must appear in the output. Parts the pattern didn't render are appended.
+ */
+function ensureComplete(s: Section, html: string): string {
+  const c = s.content;
+  const has = (t?: string) => !t || html.includes(esc(t));
+  const parts: string[] = [];
+  if ((c.heading && !has(c.heading)) || (c.eyebrow && !has(c.eyebrow))) parts.push(headBlock({ ...s, content: { ...c, sub: has(c.sub) ? undefined : c.sub } } as Section));
+  else if (c.sub && !has(c.sub)) parts.push(`<p class="m-sub">${esc(c.sub)}</p>`);
+  const missingParas = c.paragraphs.filter((p) => !has(p));
+  if (missingParas.length) parts.push(`<div class="m-prose">${paragraphs(missingParas)}</div>`);
+  if (c.flow?.length && !c.flow.every((f) => html.includes(f.slice(0, 60)))) parts.push(`<div class="m-prose">${c.flow.join('\n')}</div>`);
+  if (c.form && !html.includes('<form')) parts.push(form(c.form, s.id));
+  const missingCtas = c.ctas.filter((x) => !has(x.text));
+  if (missingCtas.length) parts.push(ctas(missingCtas));
+  for (const m of c.media) {
+    const key = m.src ?? m.html?.slice(0, 40);
+    if (key && !html.includes(esc(key))) parts.push(media(m));
+  }
+  // Every field of every item, not just its headline: a layout may show a title and drop the description.
+  const lost = c.items.map((it) => {
+    const bits: string[] = [];
+    if (it.quote && !has(it.quote.text)) bits.push(`<blockquote><p>${esc(it.quote.text)}</p></blockquote>${attribution(it)}`);
+    if (it.title && !has(it.title)) bits.push(`<h3 class="m-h m-h3">${esc(it.title)}</h3>`);
+    if (it.price && !has(it.price)) bits.push(`<p class="m-price">${esc(it.price)}</p>`);
+    if (it.body && !has(it.body)) bits.push(`<p>${esc(it.body)}</p>`);
+    const bl = (it.bullets ?? []).filter((b) => !has(b));
+    if (bl.length) bits.push(`<ul class="m-bullets">${bl.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`);
+    if (it.meta && !has(it.meta)) bits.push(`<p class="m-eyebrow">${esc(it.meta)}</p>`);
+    if (it.extra?.length && !it.extra.every((x) => html.includes(x.slice(0, 60)))) bits.push(`<div class="m-prose">${it.extra.join('')}</div>`);
+    if (it.cta && !has(it.cta.text)) bits.push(btn(it.cta));
+    return bits;
+  }).filter((b) => b.length);
+  if (lost.length) {
+    parts.push(`<div class="m-grid m-grid-${Math.min(lost.length, 3)}">${lost.map((bits) => `<article class="m-card">${bits.join('')}</article>`).join('')}</div>`);
+  }
+  if (c.stats?.length && !c.stats.every((x) => has(x.value))) parts.push(`<dl class="m-stats">${c.stats.map((x) => `<div><dd>${esc(x.value)}</dd><dt>${esc(x.label)}</dt></div>`).join('')}</dl>`);
+  const logos = (c.logos ?? []).filter((l) => l.src && !html.includes(esc(l.src)));
+  if (logos.length) parts.push(`<ul class="m-logos">${logos.map((l) => `<li>${media(l, 'm-logo')}</li>`).join('')}</ul>`);
+  for (const a of s.attachments) {
+    if (a.kind === 'stats' && a.stats?.length && !a.stats.every((x) => has(x.value))) parts.push(attachments({ ...s, attachments: [a] } as Section));
+    if (a.kind === 'logos' && a.logos?.length && !a.logos.every((l) => !l.src || html.includes(esc(l.src)))) parts.push(attachments({ ...s, attachments: [a] } as Section));
+  }
+  return parts.length ? `${html}<div class="m-container m-leftover">${parts.join('')}</div>` : html;
+}
+
 export function renderSection(s: Section, index: number): string {
   const tone = s.variant.tone;
   const anchor = s.anchor ? ` id="${esc(s.anchor)}"` : '';
   const data = `data-m-section="${esc(s.id)}" data-m-intent="${s.intent}"`;
-  const label = s.content.heading ? '' : '';
-  if (s.useRaw) {
+  if (s.useRaw && s.rawHtml) {
     return `<section class="m-sec m-tone-${tone} m-space-${s.variant.spacing} m-raw"${anchor} ${data} data-m-pattern="original"><div class="m-container">${s.rawHtml}</div></section>`;
   }
   const pattern = safePattern(s);
   const fn = RENDERERS[pattern] ?? contentProse;
-  void index; void label;
-  return `<section class="m-sec m-tone-${tone} m-space-${s.variant.spacing} m-align-${s.variant.align} m-p-${pattern}"${anchor} ${data} data-m-pattern="${pattern}">${fn(s)}</section>`;
+  renderState.priority = s.intent === 'hero' || index === 0 ? 1 : 0;
+  const body = ensureComplete(s, fn(s)) + extra(s.content.extra);
+  renderState.priority = 0;
+  // Name the landmark by pointing at its own visible heading (no duplicated text for screen readers).
+  const labelled = body.includes(`id="h-${esc(s.id)}"`) ? ` aria-labelledby="h-${esc(s.id)}"` : '';
+  return `<section class="m-sec m-tone-${tone} m-space-${s.variant.spacing} m-align-${s.variant.align} m-p-${pattern}"${anchor}${labelled} ${data} data-m-pattern="${pattern}">${body}</section>`;
 }

@@ -7,12 +7,28 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "morpheus": "tsx apps/cli/src/index.ts",
-    "web": "tsx apps/web/src/server.ts"
+    "web": "tsx apps/web/src/server.ts",
+    "audit:a11y": "tsx scripts/audit-a11y.ts",
+    "audit:html": "tsx scripts/audit-html.ts",
+    "audit:all": "pnpm audit --prod && pnpm typecheck && pnpm test",
+    "audit:deps": "pnpm audit --prod"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "axe-core": "^4.13.0",
+    "html-validate": "^11.16.1",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.25.0"
+    }
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
