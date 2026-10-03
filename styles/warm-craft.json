@@ -1,9 +1,0 @@
-{
-  "name": "Warm Craft",
-  "description": "Earthy, tactile, hand-made feel with soft organic shapes.",
-  "colors": { "bg": "#fbf6ee", "fg": "#2b2118", "muted": "#7a6a58", "accent": "#c4622d", "line": "#e6d8c3" },
-  "type": { "display": "DM Serif Display, serif", "body": "DM Sans, sans-serif", "scale": 1.25, "base": 17 },
-  "shape": { "radius": 14, "shadow": "0 1px 0 rgba(43,33,24,.08)", "border": "1px solid var(--line)" },
-  "layout": { "align": "left", "density": "comfortable", "sections": "varied-rhythm" },
-  "motion": "subtle"
-}

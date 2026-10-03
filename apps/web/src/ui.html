@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morpheus</title>
+<style>
+:root{--bg:#f4f3ef;--panel:#fbfaf7;--ink:#1b1a17;--mute:#6c685f;--line:#dedbd2;--acc:#2b4cff;--acc-ink:#fff;--ok:#1f7a4d;--warn:#b26a00;--bad:#b3261e;--r:10px}
+@media (prefers-color-scheme:dark){:root{--bg:#121211;--panel:#1b1a18;--ink:#eeece6;--mute:#9b978c;--line:#2e2c28;--acc:#6f8bff;--acc-ink:#0b0e1a;--ok:#5dc690;--warn:#e2a24a;--bad:#ff8a80}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.top{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.logo{font-weight:800;letter-spacing:-.02em;font-size:16px;display:flex;gap:8px;align-items:center}
+.logo i{width:18px;height:18px;border-radius:5px;background:conic-gradient(from 200deg,var(--acc),#16a085,#e67e22,var(--acc))}
+.path{flex:1;display:flex;gap:8px;max-width:620px}
+.path input{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.btn{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
+.btn.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+.btn:disabled{opacity:.45;cursor:default}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:99px;color:var(--mute)}
+.spacer{flex:1}
+main{display:grid;grid-template-columns:320px minmax(0,1fr) 370px;min-height:0}
+aside{overflow:auto;background:var(--panel);min-height:0}
+.left{border-right:1px solid var(--line)}.right{border-left:1px solid var(--line)}
+.sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.sec h3{margin:0 0 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:700}
+.score{display:grid;grid-template-columns:78px 1fr auto;gap:8px;align-items:center;margin:6px 0;font-size:12px}
+.meter{height:8px;border-radius:5px;background:var(--line);position:relative;overflow:hidden}
+.meter b{position:absolute;inset:0 auto 0 0;border-radius:5px}
+.meter .ghost{opacity:.3}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:7px 4px;font-size:12px}
+.seg button.on{background:var(--ink);color:var(--bg)}
+.hint{font-size:12px;color:var(--mute);margin:8px 0 0}
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.preset{border:1px solid var(--line);border-radius:var(--r);padding:8px;background:var(--bg);text-align:left}
+.preset.on{outline:2px solid var(--acc);border-color:transparent}
+.preset .sw{display:flex;height:18px;border-radius:5px;overflow:hidden;margin-bottom:6px;border:1px solid var(--line)}
+.preset .sw span{flex:1}
+.preset b{display:block;font-size:12px}
+.preset small{color:var(--mute);font-size:11px;display:block;line-height:1.3}
+textarea{width:100%;min-height:68px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);resize:vertical}
+.row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin:8px 0;font-size:12px}
+.row input[type=color]{width:100%;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:none}
+.row input[type=range]{width:100%}
+.row select{padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--bg);width:100%}
+.stage{display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0;background:var(--bg)}
+.bar{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.tog{display:inline-grid;grid-auto-flow:column;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tog button{border:0;background:var(--panel);padding:6px 11px;font-size:12px}
+.tog button.on{background:var(--ink);color:var(--bg)}
+.frame-wrap{overflow:auto;display:flex;justify-content:center;padding:16px;min-height:0}
+iframe{border:1px solid var(--line);border-radius:8px;background:#fff;height:100%;width:100%;max-width:100%;transition:width .2s}
+.empty{margin:auto;max-width:430px;text-align:center;color:var(--mute);padding:40px}
+.empty h2{color:var(--ink);margin:0 0 6px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2}
+.tabs button{border:0;background:none;padding:11px 4px;border-bottom:2px solid transparent;color:var(--mute);font-weight:600;font-size:12px}
+.tabs button.on{color:var(--ink);border-color:var(--acc)}
+.cat{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:14px 16px 4px;font-weight:700}
+.chg{display:grid;grid-template-columns:20px 1fr;gap:8px;padding:9px 16px;border-top:1px solid var(--line);cursor:pointer}
+.chg:hover{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.chg.off{opacity:.45}
+.chg .t{font-size:12px;color:var(--mute)}
+.chg p{margin:2px 0 0;font-size:13px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot.high{background:var(--bad)}.dot.medium{background:var(--warn)}.dot.low{background:var(--mute)}
+.manual{font-size:10px;border:1px solid var(--acc);color:var(--acc);border-radius:99px;padding:0 6px;margin-left:6px}
+.list{padding:8px 16px}
+.item{padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.item small{display:block;color:var(--mute)}
+.pill{display:inline-block;font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;text-transform:uppercase}
+.pill.high{background:var(--bad);color:#fff}.pill.medium{background:var(--warn);color:#fff}.pill.low{background:var(--line);color:var(--mute)}
+.insp{padding:14px 16px}
+.insp h4{margin:0 0 2px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.busy{opacity:.6;pointer-events:none}
+@media (max-width:1100px){main{grid-template-columns:280px 1fr}.right{display:none}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo"><i></i>Morpheus</div>
+  <div class="path"><input id="path" placeholder="Path to project folder (relative to the server root)" spellcheck="false"><button class="btn primary" id="load">Load</button></div>
+  <div class="chips" id="stack"></div>
+  <div class="spacer"></div>
+  <button class="btn" id="export" disabled>Export site</button>
+</div>
+<main>
+  <aside class="left" id="left">
+    <div class="sec"><h3>Scores</h3><div id="scores"><p class="hint">Load a project to begin.</p></div></div>
+    <div class="sec"><h3>Design depth</h3>
+      <div class="seg" id="depth"><button data-v="polish">Polish</button><button data-v="restructure" class="on">Restructure</button><button data-v="redesign">Redesign</button></div>
+      <p class="hint" id="depthHint"></p></div>
+    <div class="sec"><h3>Style</h3><div class="presets" id="presets"></div>
+      <p class="hint">Or describe it in a few words. A brief refines the selected preset.</p>
+      <textarea id="brief" placeholder="e.g. quiet and editorial, warm paper tones, serif headlines, lots of white space"></textarea>
+      <div style="margin-top:8px"><button class="btn" id="applyBrief">Apply brief</button> <button class="btn" id="clearBrief">Clear</button></div></div>
+    <div class="sec"><h3>Fine-tune</h3>
+      <div class="row">Accent<input type="color" id="c-accent" data-var="--m-accent" data-path="colors.accent"></div>
+      <div class="row">Background<input type="color" id="c-bg" data-var="--m-bg" data-path="colors.bg"></div>
+      <div class="row">Text<input type="color" id="c-fg" data-var="--m-fg" data-path="colors.fg"></div>
+      <div class="row">Surface<input type="color" id="c-surface" data-var="--m-surface" data-path="colors.surface"></div>
+      <div class="row">Headings<select id="f-display" data-path="type.display"></select></div>
+      <div class="row">Body<select id="f-body" data-path="type.body"></select></div>
+      <div class="row">Corners<input type="range" id="r-radius" min="0" max="28" step="1" data-var="--m-radius" data-unit="px" data-path="shape.radius"></div>
+      <div class="row">Section gap<input type="range" id="r-space" min="40" max="180" step="4" data-var="--m-section-y" data-unit="px" data-path="space.sectionY"></div>
+      <div class="row">Width<input type="range" id="r-width" min="880" max="1400" step="20" data-var="--m-container" data-unit="px" data-path="space.container"></div>
+      <div class="row">Type scale<input type="range" id="r-scale" min="1.1" max="1.6" step="0.025" data-path="type.scale"></div>
+      <button class="btn" id="resetTune">Reset fine-tuning</button>
+      <p class="hint" id="contrast"></p></div>
+  </aside>
+  <section class="stage">
+    <div class="bar">
+      <select id="page"></select>
+      <div class="tog" id="mode"><button data-v="before">Before</button><button data-v="after" class="on">After</button></div>
+      <div class="tog" id="device"><button data-v="100%" class="on">Desktop</button><button data-v="820px">Tablet</button><button data-v="390px">Phone</button></div>
+      <span class="spacer"></span>
+      <a class="btn" id="open" target="_blank" style="text-decoration:none">Open</a>
+    </div>
+    <div class="frame-wrap" id="fw"><div class="empty"><h2>Redesign a site like a consultant would</h2><p>Load a folder of static HTML/CSS. Morpheus audits it, restructures the layout and navigation, applies a style you choose, and explains every change. Edit anything live.</p></div></div>
+  </section>
+  <aside class="right">
+    <div class="tabs"><button data-t="changes" class="on">Changes</button><button data-t="section">Section</button><button data-t="audit">Audit</button></div>
+    <div id="tab-changes"></div><div id="tab-section" hidden></div><div id="tab-audit" hidden></div>
+  </aside>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const ROOT = __ROOT__;
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const FONTS = ['Fraunces','Source Serif 4','DM Serif Display','Newsreader','Cormorant Garamond','Libre Baskerville','Playfair Display','Space Grotesk','Manrope','DM Sans','Public Sans','Figtree','Instrument Sans','Bricolage Grotesque','Inter Tight','Geist','Jost','Source Sans 3','IBM Plex Mono','JetBrains Mono','Anton'];
+const DEPTH_HINT = { polish: 'Colour, type and spacing. Layout stays as is.', restructure: 'Plus section order, layouts, navigation and calls to action.', redesign: 'Plus page structure: long sections move to their own pages, and forms get shorter.' };
+const S = { meta: null, loaded: null, run: null, preset: 'editorial', brief: '', depth: 'restructure', excluded: new Set(), manual: new Map(), overrides: {}, mode: 'after', file: 'index.html', device: '100%', selected: null, tab: 'changes' };
+let runTimer = 0, scrollY = 0;
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+async function api(path, body){ const r = await fetch(path, body ? {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)} : undefined); const j = await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j; }
+const setPath = (o, p, v) => { const k=p.split('.'); let c=o; k.slice(0,-1).forEach(x=>c=(c[x]??={})); c[k.at(-1)]=v; };
+const getPath = (o, p) => p.split('.').reduce((a,k)=>a?.[k], o);
+
+async function init(){
+  S.meta = await api('/api/meta');
+  $('#path').value = new URLSearchParams(location.search).get('path') || '';
+  $('#presets').innerHTML = S.meta.presets.map(p => `<button class="preset${p.id===S.preset?' on':''}" data-id="${p.id}"><div class="sw">${[p.colors.bg,p.colors.surface,p.colors.fg,p.colors.accent,p.colors.inverse].map(c=>`<span style="background:${c}"></span>`).join('')}</div><b>${esc(p.name)}</b><small>${esc(p.description.split('.')[0])}</small></button>`).join('');
+  for (const id of ['f-display','f-body']) $('#'+id).innerHTML = FONTS.map(f=>`<option>${f}</option>`).join('');
+  $('#depthHint').textContent = DEPTH_HINT[S.depth];
+  if ($('#path').value) load();
+}
+
+async function load(){
+  const p = $('#path').value.trim() || '.';
+  $('#load').disabled = true;
+  try {
+    const r = await api('/api/load', { path: p });
+    S.loaded = r; S.excluded.clear(); S.manual.clear(); S.overrides = {}; S.selected = null;
+    $('#stack').innerHTML = [...r.stack.frameworks, ...r.stack.styling, r.stack.renderer==='static-html'?'Static HTML':''].filter(Boolean).slice(0,5).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+    toast('Loaded ' + r.name);
+    await run();
+  } catch(e){ toast(e.message); } finally { $('#load').disabled = false; }
+}
+
+function schedule(ms=120){ clearTimeout(runTimer); runTimer = setTimeout(run, ms); }
+async function run(){
+  if(!S.loaded) return;
+  document.body.classList.add('busy');
+  try {
+    S.run = await api('/api/run', { preset: S.preset, brief: S.brief, depth: S.depth, excluded: [...S.excluded], manual: [...S.manual.values()], overrides: S.overrides });
+    syncControls(); renderAll();
+  } catch(e){ toast(e.message); } finally { document.body.classList.remove('busy'); }
+  $('#export').disabled = !S.run;
+}
+
+function syncControls(){
+  const st = S.run.style;
+  for (const el of document.querySelectorAll('[data-path]')) {
+    const v = getPath(st, el.dataset.path);
+    if (el.id==='f-display'||el.id==='f-body') el.value = (v && v.family) || el.value;
+    else if (v !== undefined) el.value = v;
+  }
+  document.querySelectorAll('.preset').forEach(b=>b.classList.toggle('on', b.dataset.id===S.preset && !S.brief));
+  const bad = S.run.contrast.filter(c=>!c.ok);
+  $('#contrast').innerHTML = bad.length ? `<span style="color:var(--bad)">Contrast below WCAG AA:</span> ${bad.map(b=>esc(b.pair)+' '+b.ratio+':1').join('; ')}` : `<span style="color:var(--ok)">All palette pairs meet WCAG AA.</span>`;
+}
+
+function meter(label, before, after, invert){
+  const col = v => invert ? (v>=55?'var(--bad)':v>=30?'var(--warn)':'var(--ok)') : (v<45?'var(--bad)':v<70?'var(--warn)':'var(--ok)');
+  return `<div class="score"><span>${label}</span><div class="meter"><b class="ghost" style="width:${before}%;background:${col(before)}"></b><b style="width:${after}%;background:${col(after)}"></b></div><span>${before}→<b>${after}</b></span></div>`;
+}
+function renderScores(){
+  const r = S.run; if(!r) return;
+  $('#scores').innerHTML = meter('AI look', r.before.ai, r.after.ai, true) + meter('UX health', r.before.ux, r.after.ux, false) + `<p class="hint">Read as a <b>${esc(r.profile.industry)}</b> site, goal <b>${esc(r.profile.goal)}</b>, for ${esc(r.profile.audience)}. Faded bar is the original.</p>`;
+}
+
+function renderPages(){
+  const sel = $('#page'); const cur = S.file;
+  sel.innerHTML = S.run.pages.map(p=>`<option value="${esc(p.file)}">${esc(p.route)}  ·  ${esc(p.title.slice(0,32))}</option>`).join('');
+  if (![...sel.options].some(o=>o.value===cur)) S.file = S.run.pages[0].file;
+  sel.value = S.file;
+}
+
+function frameUrl(){ return `/preview/${encodeURI(S.file)}?mode=${S.mode}${S.mode==='after'?'&edit=1':''}&t=${Date.now()}`; }
+function renderFrame(){
+  const fw = $('#fw');
+  let f = $('#frame');
+  if(!f){ fw.innerHTML = '<iframe id="frame" title="Preview"></iframe>'; f = $('#frame'); f.addEventListener('load', () => { try{ f.contentWindow.scrollTo(0, scrollY); }catch{} if(S.selected) f.contentWindow.postMessage({type:'m-select',id:S.selected.id},'*'); }); }
+  try { scrollY = f.contentWindow.scrollY || 0; } catch { scrollY = 0; }
+  f.style.maxWidth = S.device;
+  f.src = frameUrl();
+  $('#open').href = `/preview/${encodeURI(S.file)}?mode=${S.mode}`;
+}
+
+function renderChanges(){
+  const ops = S.run.ops.filter(o => o.type !== 'advise' || true);
+  const groups = {};
+  for (const o of ops) (groups[o.category] ||= []).push(o);
+  const order = ['structure','navigation','conversion','flow','style','a11y','content'];
+  const keys = Object.keys(groups).sort((a,b)=>order.indexOf(a)-order.indexOf(b));
+  $('#tab-changes').innerHTML = `<p class="hint" style="padding:12px 16px 0">${ops.length} changes. Untick any you disagree with and Morpheus rebuilds without it.</p>` + keys.map(k => `<div class="cat">${k}</div>` + groups[k].map(o => `
+    <div class="chg${S.excluded.has(o.id)?' off':''}" data-id="${esc(o.id)}" data-sec="${esc(o.section||'')}">
+      <input type="checkbox" ${S.excluded.has(o.id)?'':'checked'} ${o.type==='advise'||o.manual?'disabled':''}>
+      <div><div class="t"><span class="dot ${o.impact}"></span>${esc(o.target)}${o.manual?'<span class="manual">yours</span>':''}${o.type==='advise'?'<span class="manual">flagged only</span>':''}</div><p>${esc(o.rationale)}</p>${o.before&&o.after?`<div class="t">${esc(String(o.before).slice(0,70))} → ${esc(String(o.after).slice(0,70))}</div>`:''}</div>
+    </div>`).join('')).join('');
+}
+
+function renderAudit(){
+  const r = S.run;
+  $('#tab-audit').innerHTML = `<div class="list"><h4 style="margin:6px 0">Still reads as generic</h4>${r.remaining.length?r.remaining.map(t=>`<div class="item"><b>${esc(t.title)}</b><small>${esc(t.evidence.join(' · '))}</small></div>`).join(''):'<p class="hint">Nothing left on the AI-tell checklist.</p>'}
+  <h4 style="margin:18px 0 6px">Remaining UX findings</h4>${r.uxFindings.length?r.uxFindings.map(f=>`<div class="item"><span class="pill ${f.severity}">${f.severity}</span>${esc(f.title)}<small>${esc(f.recommendation)}</small></div>`).join(''):'<p class="hint">No findings.</p>'}
+  ${r.warnings.length?`<h4 style="margin:18px 0 6px">Warnings</h4>${r.warnings.map(w=>`<div class="item">${esc(w)}</div>`).join('')}`:''}
+  <p class="hint" style="margin-top:16px">Copy is flagged, never rewritten. Scripts are carried over unchanged, so test interactive features.</p></div>`;
+}
+
+function findSection(id){ for (const p of S.run.pages) { const s = p.sections.find(x=>x.id===id); if (s) return { page:p, sec:s }; } return null; }
+function renderSection(){
+  const el = $('#tab-section');
+  if(!S.selected){ el.innerHTML = '<div class="insp"><p class="hint">Click any section in the preview to change its layout, background, alignment or position.</p></div>'; return; }
+  const f = findSection(S.selected.id);
+  if(!f){ el.innerHTML = '<div class="insp"><p class="hint">That section no longer exists in this version.</p></div>'; return; }
+  const { page, sec } = f;
+  const pats = S.meta.patterns.filter(p => p.intent === sec.intent);
+  const idx = page.sections.findIndex(x=>x.id===sec.id);
+  el.innerHTML = `<div class="insp"><h4>${esc(sec.heading)}</h4><p class="hint" style="margin:0 0 12px">${esc(sec.intent)} on ${esc(page.route)}${sec.useRaw?' · original markup kept':''}</p>
+    ${sec.useRaw?'<p class="hint">This section could not be rebuilt from content, so its original markup is kept.</p>':`
+    <div class="row">Layout<select id="s-pattern">${pats.length?pats.map(p=>`<option value="${p.id}" ${p.id===sec.pattern?'selected':''}>${esc(p.label)}</option>`).join(''):`<option>${esc(sec.pattern)}</option>`}</select></div>
+    <p class="hint" id="s-blurb">${esc((pats.find(p=>p.id===sec.pattern)||{}).blurb||'')}</p>`}
+    <div class="row">Background<select id="s-tone">${['plain','surface','inverse','accent'].map(t=>`<option ${t===sec.tone?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="row">Spacing<select id="s-space">${['tight','normal','loose'].map(t=>`<option ${t===sec.spacing?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="row">Alignment<select id="s-align">${['left','center'].map(t=>`<option ${t===sec.align?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="s-up" ${idx<=0?'disabled':''}>Move up</button><button class="btn" id="s-down" ${idx>=page.sections.length-1?'disabled':''}>Move down</button></div>
+    <p class="hint">Your edits are listed under Changes and override the consultant.</p></div>`;
+  const manual = (id, type, params, rationale) => { S.manual.set(id, { id, type, page: page.route, section: sec.id, params, change: { id, op: type, target: `${page.route} ${sec.heading}`, category: 'structure', impact: 'medium', rationale } }); schedule(40); };
+  $('#s-pattern')?.addEventListener('change', e => manual(`manual:set-pattern:${page.route}:${sec.id}`, 'set-pattern', { pattern: e.target.value }, `You chose the "${e.target.selectedOptions[0].text}" layout.`));
+  const rhythm = () => manual(`manual:set-rhythm:${page.route}:${sec.id}`, 'set-rhythm', { sections: [{ id: sec.id, tone: $('#s-tone').value, spacing: $('#s-space').value }] }, `You set this section's background to ${$('#s-tone').value} with ${$('#s-space').value} spacing.`);
+  $('#s-tone').addEventListener('change', rhythm); $('#s-space').addEventListener('change', rhythm);
+  $('#s-align').addEventListener('change', e => manual(`manual:set-align:${page.route}:${sec.id}`, 'set-align', { align: e.target.value, sections: [sec.id] }, `You aligned this section ${e.target.value}.`));
+  const move = d => { const order = page.sections.map(x=>x.id); const i = order.indexOf(sec.id); [order[i], order[i+d]] = [order[i+d], order[i]]; S.manual.set(`manual:reorder:${page.route}`, { id:`manual:reorder:${page.route}`, type:'reorder', page: page.route, params:{ order }, change:{ id:`manual:reorder:${page.route}`, op:'reorder', target: page.route, category:'structure', impact:'medium', rationale:'You reordered the sections.' } }); schedule(40); };
+  $('#s-up').addEventListener('click', ()=>move(-1)); $('#s-down').addEventListener('click', ()=>move(1));
+}
+
+function renderAll(){ renderScores(); renderPages(); renderChanges(); renderAudit(); renderSection(); renderFrame(); }
+function showTab(t){ S.tab=t; document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.t===t)); for (const k of ['changes','section','audit']) $('#tab-'+k).hidden = k!==t; }
+
+// ---- wiring
+$('#load').onclick = load;
+$('#path').addEventListener('keydown', e => e.key==='Enter' && load());
+$('#presets').addEventListener('click', e => { const b = e.target.closest('.preset'); if(!b) return; S.preset = b.dataset.id; S.overrides = {}; run(); });
+$('#depth').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return; S.depth=b.dataset.v; document.querySelectorAll('#depth button').forEach(x=>x.classList.toggle('on', x===b)); $('#depthHint').textContent = DEPTH_HINT[S.depth]; run(); });
+$('#applyBrief').onclick = () => { S.brief = $('#brief').value.trim(); S.overrides = {}; run(); };
+$('#clearBrief').onclick = () => { S.brief=''; $('#brief').value=''; S.overrides={}; run(); };
+$('#page').onchange = e => { S.file = e.target.value; S.selected = null; renderSection(); renderFrame(); };
+$('#mode').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return; S.mode=b.dataset.v; document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on', x===b)); renderFrame(); });
+$('#device').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return; S.device=b.dataset.v; document.querySelectorAll('#device button').forEach(x=>x.classList.toggle('on', x===b)); $('#frame') && ($('#frame').style.maxWidth = S.device); });
+document.querySelector('.tabs').addEventListener('click', e => { const b=e.target.closest('button'); if(b) showTab(b.dataset.t); });
+$('#tab-changes').addEventListener('click', e => {
+  const row = e.target.closest('.chg'); if(!row) return;
+  const id = row.dataset.id;
+  if (e.target.matches('input[type=checkbox]')) { e.target.checked ? S.excluded.delete(id) : S.excluded.add(id); schedule(40); return; }
+  if (row.dataset.sec) { S.selected = { id: row.dataset.sec }; $('#frame')?.contentWindow.postMessage({type:'m-select', id: row.dataset.sec}, '*'); }
+});
+window.addEventListener('message', e => {
+  const d = e.data || {};
+  if (d.type === 'm-select') { S.selected = { id: d.id }; showTab('section'); renderSection(); }
+});
+// live fine-tuning: instant CSS variable updates in the preview, committed (rebuilt) on release
+document.querySelector('.left').addEventListener('input', e => {
+  const el = e.target; if (!el.dataset.var) return;
+  const val = el.value + (el.dataset.unit || '');
+  $('#frame')?.contentWindow.postMessage({ type:'m-vars', vars: { [el.dataset.var]: val } }, '*');
+});
+document.querySelector('.left').addEventListener('change', e => {
+  const el = e.target; if (!el.dataset.path) return;
+  let v = el.value; if (el.type==='range') v = Number(v);
+  setPath(S.overrides, el.dataset.path, v); schedule(30);
+});
+$('#resetTune').onclick = () => { S.overrides = {}; run(); };
+$('#export').onclick = async () => {
+  const out = prompt('Export to folder:', (S.loaded.dir + '.morpheus'));
+  if (!out) return;
+  try { const r = await api('/api/export', { out }); toast(`Wrote ${r.files.length} files to ${r.out}`); } catch(e){ toast(e.message); }
+};
+init();
+</script>
+</body>
+</html>

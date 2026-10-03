@@ -50,6 +50,12 @@ Proposed layout: `packages/core`, `packages/adapters/*`, `apps/web`, `apps/cli`,
 
 Preview runs the client's real project in a sandbox where possible (dev server per workspace). A fallback renders the IR directly for stacks that can't run in the sandbox.
 
+## Implementation status
+
+Built: Site IR, detector, analyzer, consultant, style system, HTML adapter, CLI, web editor (see README). Not built: other adapters, port mode, GitHub/PR output, desktop shell, hosted mode.
+
+Operations on the IR are data (`Operation`: id, type, params, rationale), which is what lets the editor reject a single change, add manual edits, and replay the whole plan deterministically.
+
 ## MVP roadmap
 
 1. `@morpheus/core`: Site IR schema, detector and AI-look score, exposed first through CLI `morpheus scan <path>`

@@ -1,0 +1,7 @@
+{
+  "name": "@morpheus/adapter-html",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": { "@morpheus/core": "workspace:*", "parse5": "^7.2.0", "postcss": "^8.4.47" }
+}

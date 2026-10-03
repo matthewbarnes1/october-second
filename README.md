@@ -35,8 +35,40 @@ See [docs/AI_TELLS.md](docs/AI_TELLS.md). Examples: purple-to-blue gradients, ce
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system design and MVP roadmap
 - [docs/DESIGN_CONSULTANT.md](docs/DESIGN_CONSULTANT.md): the audit and restructuring process
 - [docs/AI_TELLS.md](docs/AI_TELLS.md): the detector's checklist
-- [styles/](styles/): style presets (design tokens plus layout rules)
+- Style presets live in `packages/core/src/style/presets.ts`
 
-## Status
+## Try it
 
-Planning. Nothing is built yet.
+```bash
+pnpm install
+pnpm morpheus scan fixtures/ai-saas                # stack, AI-look score, UX audit
+pnpm morpheus styles                               # presets
+pnpm morpheus plan fixtures/ai-saas --style swiss --depth redesign
+pnpm morpheus redesign fixtures/ai-saas --brief "calm, warm, handmade, serif headlines" --out out/
+pnpm web                                           # live editor at http://127.0.0.1:4173
+pnpm test
+```
+
+`fixtures/ai-saas` is a deliberately generic AI-built landing page (purple gradients, emoji cards, centered hero with a badge, nine nav items). On it, a full redesign takes the AI-look score from 100 to about 19 and UX health from 37 to 100, and every change comes with a reason.
+
+## What exists today
+
+- **Core engine** (`packages/core`): Site IR, stack detector (JS frameworks, PHP/Laravel/WordPress, Rails/Jekyll, Django/Flask, Hugo, Flutter and more), AI-tell detector (19 rules, weighted), UX audit (26 checks), project discovery (industry, goal, audience), a pattern library with 37 layouts, the consultant planner (reorder, merge, restructure, navigation regrouping, page extraction, form simplification, accessibility fixes), 9 style presets verified for WCAG contrast, and a free-text style brief interpreter.
+- **HTML adapter** (`packages/adapter-html`): reads static HTML/CSS sites into the IR and writes a rebuilt site with a token-driven stylesheet. Content is never rewritten; sections it cannot model are kept as original markup.
+- **CLI** (`apps/cli`): `scan`, `audit`, `styles`, `plan`, `redesign`, `serve`.
+- **Web editor** (`apps/web`): before/after preview, device widths, style presets and brief, live fine-tuning (colours, fonts, corners, spacing, width, type scale), per-change accept/reject, click-a-section inspector (layout, background, alignment, reorder), audit panel, export.
+
+## Not built yet
+
+- Adapters for React/Vue/Svelte/Astro, server templates (Blade, ERB, Jinja...) and WordPress themes. The detector recognises them and reports honestly that no adapter exists; the IR is built so an adapter only has to implement `read` and `write`.
+- **Port mode** (emit the IR in a different stack).
+- GitHub connection and pull-request output, and a hosted multi-user version.
+- Desktop shell.
+- LLM-assisted planning. Everything runs deterministically offline today; the brief interpreter and planner have clean seams for a model.
+- Copy rewriting. Morpheus flags buzzword copy and placeholder proof but leaves the client's words alone.
+
+## Known limits
+
+- Scripts are carried over unchanged; selectors they rely on may no longer match the rebuilt markup.
+- Web fonts load from Google Fonts at view time.
+- English is assumed when a page declares no language (the change is listed so it can be rejected).

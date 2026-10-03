@@ -1,0 +1,6 @@
+{
+  "name": "@morpheus/web",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": { "@morpheus/core": "workspace:*", "@morpheus/adapter-html": "workspace:*" }
+}

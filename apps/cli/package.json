@@ -1,0 +1,7 @@
+{
+  "name": "@morpheus/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "morpheus": "src/index.ts" },
+  "dependencies": { "@morpheus/core": "workspace:*", "@morpheus/adapter-html": "workspace:*" }
+}
